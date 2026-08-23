@@ -32,6 +32,9 @@
   <exec_depend>apriltag_ros</exec_depend>
   <exec_depend>easy_handeye2</exec_depend>
 
+  <!-- Visualization (3 launch file đều khởi động rviz2) -->
+  <exec_depend>rviz2</exec_depend>
+
   <!-- ultralytics / mediapipe / torch là deps pip (KHÔNG có qua rosdep).
        Cài: pip install -r requirements.txt -->
 

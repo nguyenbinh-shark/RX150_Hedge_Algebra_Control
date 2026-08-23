@@ -13,6 +13,7 @@ install(
   PROGRAMS
     scripts/yolo_detector_node.py
     scripts/hand_gesture_node.py
+    scripts/test_perception_modules.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -25,8 +26,9 @@ install(
 )
 
 install(
-  DIRECTORY launch config models
+  DIRECTORY launch config models docs
   DESTINATION share/${PROJECT_NAME}
+  PATTERN "__pycache__" EXCLUDE
 )
 
 # Install requirements.txt để user có thể pip install các pip-only deps (ultralytics, mediapipe).

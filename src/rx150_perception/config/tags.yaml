@@ -1,0 +1,9 @@
+/**:
+  ros__parameters:
+    tag_family: tag36h11
+    standalone_tags:
+      tag_names:
+        - tag_0
+      tag_0:
+        id: 0
+        size: 0.028

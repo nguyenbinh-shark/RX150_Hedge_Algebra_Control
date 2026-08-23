@@ -24,11 +24,11 @@
     transport_hint: 'raw'
     publish_tag_detections_image: true
 
-    # Tag definitions — mặc định: 1 tag tag36h11 id=0, cạnh 30mm (0.03m).
+    # Tag definitions — 1 tag tag36h11 id=0, cạnh 28mm (0.028m).
     standalone_tags:
       tag_names: ['tag_0']
       tag_0:
         id: 0
-        size: 0.03
+        size: 0.028
     tag_bundles:
       bundle_names: []
