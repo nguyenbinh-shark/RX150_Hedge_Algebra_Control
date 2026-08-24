@@ -4,7 +4,7 @@
 #   ros2 launch rx150_perception standalone_perception.launch.py
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -19,7 +19,7 @@ def generate_launch_description():
     ])
 
     default_filter_params = PathJoinSubstitution([
-        FindPackageShare('interbotix_xsarm_perception'),
+        FindPackageShare('rx150_perception'),
         'config', 'filter_params.yaml',
     ])
 

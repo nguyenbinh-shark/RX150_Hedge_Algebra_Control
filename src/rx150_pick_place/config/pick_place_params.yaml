@@ -16,17 +16,21 @@
     place_z: 0.05
     place_pitch: 0.5
     # ---- Home / retreat ----
-    home_joints: [0.0, -1.80, 1.55, 0.8, 0.0]
+    home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
     detection_wait_s: 10.0
+    # ---- Nguồn phát hiện vật ----
+    # '/yolo/detected_objects' (mặc định) hoặc '/pcl/detected_objects' khi launch
+    # với detector:=pcl (launch override giá trị này — không cần sửa file).
+    detection_topic: /yolo/detected_objects
     # ---- Gripper ----
     # true  = qua MoveIt gripper_trajectory_bridge (stall-aware, giữ lực khi vận chuyển) — khuyến nghị
     # false = raw PWM JointSingleCommand (fallback, như test_pick_place_moveit.py)
     use_gripper_bridge: true
     # ---- Collision: box bàn (ADD planning scene) + OctoMap từ pointcloud ----
-    add_table_collision: true
+    add_table_collision: false
     table_x: 0.30
     table_y: 0.0
-    table_z: -0.02              # tâm box: mặt bàn ~z=0 → đỉnh box ≈ z + size_z/2 < 0
+    table_z: -0.05              # tâm box: đỉnh box tại z = -0.05 + 0.05 = 0.00m
     table_size_x: 0.80
     table_size_y: 0.80
     table_size_z: 0.10

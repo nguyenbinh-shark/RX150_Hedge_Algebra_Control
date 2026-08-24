@@ -1,5 +1,7 @@
 # Python deps KHÔNG có qua apt/rosdep — cài bằng:
 #   pip install --user -r requirements.txt
 # torch được ultralytics kéo theo tự động.
+numpy<2
 ultralytics
-mediapipe
+mediapipe>=0.10.0,<0.10.15
+opencv-python

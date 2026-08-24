@@ -54,7 +54,7 @@ GRASP_FINGER = 0.015    # m — đóng (kẹp vật)
 RELEASE_FINGER = 0.037  # m — mở hết
 GRIP_PWM = 200.0        # PWM fallback — đóng
 OPEN_PWM = -200.0       # PWM fallback — mở
-HOME_JOINTS = [0.0, -1.80, 1.55, 0.8, 0.0]
+HOME_JOINTS = [0.0, 0.0, 0.0, 0.0, 0.0]
 OK_CODES = (1, -4)      # 1=SUCCESS, -4=CONTROL_FAILED (bridge báo tolerance nhưng đã xong)
 
 
@@ -91,6 +91,9 @@ class PickPlaceMoveItNode(Node):
         self.declare_parameter('place_pitch', 0.5)
         self.declare_parameter('home_joints', HOME_JOINTS)
         self.declare_parameter('detection_wait_s', 10.0)
+        # Nguồn PoseArray vật thể: YOLO (mặc định) hoặc cluster_bridge (PCL) —
+        # pose phải nằm trong frame rx150/base_link ở cả hai phía.
+        self.declare_parameter('detection_topic', '/yolo/detected_objects')
         self.declare_parameter('use_gripper_bridge', True)
         self.declare_parameter('add_table_collision', True)
         self.declare_parameter('table_x', 0.30)
@@ -116,8 +119,9 @@ class PickPlaceMoveItNode(Node):
             ApplyPlanningScene, '/apply_planning_scene', callback_group=self._cb)
 
         # ---------------- subscriptions Layer 1 ----------------
-        self.create_subscription(PoseArray, '/yolo/detected_objects', self._poses_cb, 10,
-                                 callback_group=self._cb)
+        self.create_subscription(
+            PoseArray, self.get_parameter('detection_topic').value, self._poses_cb, 10,
+            callback_group=self._cb)
         self.create_subscription(Int32, '/hand_gesture/selected_target', self._target_cb, 10,
                                  callback_group=self._cb)
         self.create_subscription(String, '/hand_gesture/event', self._event_cb, 10,

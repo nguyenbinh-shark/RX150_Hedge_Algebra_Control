@@ -221,7 +221,8 @@ def launch_setup(context, *args, **kwargs):
         'publish_transforms_updates': True,
     }
 
-    sensor_parameters = load_yaml('rx150_motion_common', 'config/sensors_3d.yaml')
+    use_octomap = LaunchConfiguration('use_octomap').perform(context).lower() == 'true'
+    sensor_parameters = load_yaml('rx150_motion_common', 'config/sensors_3d.yaml') if use_octomap else {}
 
     remappings = [
         (
@@ -238,29 +239,32 @@ def launch_setup(context, *args, **kwargs):
         ),
     ]
 
+    move_group_params = [
+        {
+            'planning_scene_monitor_options': {
+                'robot_description':
+                    'robot_description',
+                'joint_state_topic':
+                    f'/{robot_name}/joint_states',
+            },
+            'use_sim_time': False,
+        },
+        robot_description,
+        robot_description_semantic,
+        kinematics_config,
+        ompl_planning_pipeline_config,
+        trajectory_execution_parameters,
+        moveit_controllers,
+        planning_scene_monitor_parameters,
+        joint_limits,
+    ]
+    if use_octomap and sensor_parameters:
+        move_group_params.append(sensor_parameters)
+
     move_group_node = Node(
         package='moveit_ros_move_group',
         executable='move_group',
-        parameters=[
-            {
-                'planning_scene_monitor_options': {
-                    'robot_description':
-                        'robot_description',
-                    'joint_state_topic':
-                        f'/{robot_name}/joint_states',
-                },
-                'use_sim_time': False,
-            },
-            robot_description,
-            robot_description_semantic,
-            kinematics_config,
-            ompl_planning_pipeline_config,
-            trajectory_execution_parameters,
-            moveit_controllers,
-            planning_scene_monitor_parameters,
-            joint_limits,
-            sensor_parameters,
-        ],
+        parameters=move_group_params,
         remappings=remappings,
         output={'both': 'screen'},
     )
@@ -499,9 +503,18 @@ def generate_launch_description():
             ),
         )
     )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'use_octomap',
+            default_value='false',
+            choices=('true', 'false'),
+            description='enable OctoMap 3D obstacle avoidance from pointcloud. Disabled by default.',
+        )
+    )
 
     declared_arguments.extend(
         declare_interbotix_xsarm_robot_description_launch_arguments(
+            show_ar_tag='true',
             show_gripper_bar='true',
             show_gripper_fingers='true',
             hardware_type='actual',

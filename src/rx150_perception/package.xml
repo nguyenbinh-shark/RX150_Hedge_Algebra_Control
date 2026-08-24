@@ -2,8 +2,8 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_perception</name>
-  <version>0.1.0</version>
-  <description>Nhận diện rx150: YOLOv8 segmentation + cử chỉ tay MediaPipe + PCL clustering + hand-eye calibration. Tách từ rx150_fuzzy_controller.</description>
+  <version>0.2.0</version>
+  <description>Pipeline nhận diện PCL chuẩn Interbotix cho RX150 + RealSense D435i. Tích hợp pc_filter + armtag + static_trans_pub.</description>
   <maintainer email="todo@todo.todo">hust</maintainer>
   <license>BSD</license>
 
@@ -11,32 +11,26 @@
 
   <!-- ROS Python runtime -->
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>cv_bridge</exec_depend>
   <exec_depend>tf2_ros</exec_depend>
-  <exec_depend>tf2_geometry_msgs</exec_depend>
-  <exec_depend>message_filters</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
 
-  <!-- Interbotix SDK + perception + moveit (cho handeye launches và pick_place) -->
+  <!-- Interbotix SDK + perception modules (chuẩn upstream) -->
   <exec_depend>interbotix_common_modules</exec_depend>
   <exec_depend>interbotix_xs_modules</exec_depend>
   <exec_depend>interbotix_perception_modules</exec_depend>
-  <exec_depend>interbotix_xsarm_control</exec_depend>
-  <exec_depend>interbotix_xsarm_moveit</exec_depend>
+  <exec_depend>interbotix_perception_msgs</exec_depend>
+  <exec_depend>interbotix_tf_tools</exec_depend>
   <exec_depend>interbotix_xsarm_perception</exec_depend>
 
-  <!-- Camera + hand-eye -->
+  <!-- Camera + AprilTag -->
   <exec_depend>realsense2_camera</exec_depend>
   <exec_depend>apriltag_ros</exec_depend>
-  <exec_depend>easy_handeye2</exec_depend>
 
-  <!-- Visualization (3 launch file đều khởi động rviz2) -->
+  <!-- Visualization -->
   <exec_depend>rviz2</exec_depend>
-
-  <!-- ultralytics / mediapipe / torch là deps pip (KHÔNG có qua rosdep).
-       Cài: pip install -r requirements.txt -->
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
