@@ -13,12 +13,20 @@
 #   ~/event           (std_msgs/String — "ok_sign" khi bắt được OK-sign)
 
 import math
+import os
+import time
 
 import numpy as np
 import cv2
 
+# MediaPipe Hands chạy inference trên CPU (XNNPACK) — build pip không có GPU delegate,
+# và ép EGL context sang A4000 còn CHẬM hơn (đo: 12.4 ms vs 9.8 ms) vì inference vẫn ở
+# CPU còn ảnh phải đi qua PCIe. Cách giảm tải duy nhất ở đây là throttle + ghim thread.
+cv2.setNumThreads(2)
+
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import Image, CameraInfo
 from geometry_msgs.msg import PoseArray
 from std_msgs.msg import Int32, String
@@ -59,7 +67,10 @@ class HandGestureNode(Node):
 
         self.declare_parameter('base_frame', 'rx150/base_link')
         self.declare_parameter('camera_optical_frame', 'camera_color_optical_frame')
-        self.declare_parameter('detection_topic', '/yolo/detected_objects')
+        self.declare_parameter('detection_topic', '/yolo/detected_tubes')
+        # MediaPipe Hands ~9.8 ms/frame trên CPU. Ở 30 Hz là ~29% một core liên tục;
+        # 5 Hz là quá đủ để bắt cử chỉ và chỉ còn ~5%.
+        self.declare_parameter('gesture_rate_hz', 5.0)
         self.declare_parameter('pointing_threshold_m', 0.08)
         self.declare_parameter('ok_sign_px', 40.0)
         self.declare_parameter('image_topic', '/camera/camera/color/image_raw')
@@ -71,6 +82,10 @@ class HandGestureNode(Node):
         self.det_topic = self.get_parameter('detection_topic').value
         self.thresh = float(self.get_parameter('pointing_threshold_m').value)
         self.ok_px = float(self.get_parameter('ok_sign_px').value)
+
+        rate_hz = float(self.get_parameter('gesture_rate_hz').value)
+        self._min_period = (1.0 / rate_hz) if rate_hz > 0.0 else 0.0
+        self._last_proc = 0.0
 
         self.bridge = CvBridge()
         self.tf_buffer = tf2_ros.Buffer()
@@ -87,10 +102,14 @@ class HandGestureNode(Node):
         self.create_subscription(PoseArray, self.det_topic, self._poses_cb, 10)
         self.create_subscription(
             CameraInfo, self.get_parameter('camera_info_topic').value, self._info_cb, 10)
+        # Topic ảnh của RealSense là sensor data: BEST_EFFORT + depth nông. Để mặc định
+        # (RELIABLE, depth 10) thì vừa lệch QoS với driver vừa dựng backlog khi CPU bận.
+        img_qos = QoSProfile(reliability=ReliabilityPolicy.BEST_EFFORT,
+                             history=HistoryPolicy.KEEP_LAST, depth=1)
         color_sub = message_filters.Subscriber(
-            self, Image, self.get_parameter('image_topic').value)
+            self, Image, self.get_parameter('image_topic').value, qos_profile=img_qos)
         depth_sub = message_filters.Subscriber(
-            self, Image, self.get_parameter('depth_topic').value)
+            self, Image, self.get_parameter('depth_topic').value, qos_profile=img_qos)
         self.sync = message_filters.ApproximateTimeSynchronizer(
             [color_sub, depth_sub], 10, 0.1)
         self.sync.registerCallback(self._sync_cb)
@@ -121,15 +140,19 @@ class HandGestureNode(Node):
         ps.header.frame_id = self.optical_frame
         ps.header.stamp = stamp
         ps.point.x, ps.point.y, ps.point.z = float(x), float(y), float(z)
-        return np.array([
-            tf2_geometry_msgs.do_transform_point(ps, tf).point.x,
-            tf2_geometry_msgs.do_transform_point(ps, tf).point.y,
-            tf2_geometry_msgs.do_transform_point(ps, tf).point.z,
-        ])
+        # Gọi do_transform_point MỘT lần rồi đọc 3 thành phần — bản cũ gọi 3 lần cho
+        # cùng một điểm (3x công việc, không đổi kết quả).
+        out = tf2_geometry_msgs.do_transform_point(ps, tf).point
+        return np.array([out.x, out.y, out.z])
 
     def _sync_cb(self, color_msg, depth_msg):
         if self.intrinsics is None:
             return
+        # Throttle trước MỌI xử lý nặng (convert ảnh, cvtColor, MediaPipe).
+        now = time.monotonic()
+        if self._min_period > 0.0 and (now - self._last_proc) < self._min_period:
+            return
+        self._last_proc = now
         try:
             color = self.bridge.imgmsg_to_cv2(color_msg, 'bgr8')
             depth_mm = self.bridge.imgmsg_to_cv2(depth_msg, '16UC1')

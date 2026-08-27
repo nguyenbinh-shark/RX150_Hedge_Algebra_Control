@@ -1,15 +1,17 @@
-// AprilTag config cho hand-eye calibration (rx150_fuzzy_controller).
-// Dùng cho node apriltag_ros/apriltag_ros_continuous_detector_node,
-// được launch trong handeye_calibrate.launch.py.
-//
-// QUAN TRỌNG:
-//  - tag_family phải khớp với tag in vật lý (mặc định tag36h11).
-//  - standalone tag 'tag_0': frame con do apriltag publish sẽ tên là 'tag_0'
-//    (xem common_functions.cpp: child_frame_id = tag name). Đây chính là
-//    tracking_marker_frame truyền cho easy_handeye2.
-//  - 'size' = chiều dài cạnh tag (m). PHẢI khớp với tag in thật, nếu không
-//    pose ước lượng sẽ bị sai scale -> calibration sai.
-//  - Nếu in tag khác (id/size/family), sửa phần standalone_tags cho khớp.
+# AprilTag config cho hand-eye calibration (rx150_fuzzy_controller).
+# Dùng cho node apriltag_ros/apriltag_ros_continuous_detector_node,
+# được launch trong handeye_calibrate.launch.py.
+#
+# QUAN TRỌNG:
+#  - Comment trong file param YAML phải là '#'. Trước đây header này dùng '//' nên
+#    cả file KHÔNG parse được ("mapping values are not allowed here", dòng 5).
+#  - tag_family phải khớp với tag in vật lý (mặc định tag36h11).
+#  - standalone tag 'tag_0': frame con do apriltag publish sẽ tên là 'tag_0'
+#    (xem common_functions.cpp: child_frame_id = tag name). Đây chính là
+#    tracking_marker_frame truyền cho easy_handeye2.
+#  - 'size' = chiều dài cạnh tag (m). PHẢI khớp với tag in thật, nếu không
+#    pose ước lượng sẽ bị sai scale -> calibration sai.
+#  - Nếu in tag khác (id/size/family), sửa phần standalone_tags cho khớp.
 /**:
   ros__parameters:
     # Detector settings
@@ -22,7 +24,9 @@
     max_hamming_dist: 2
     publish_tf: true            # publish TF camera_color_optical_frame -> tag_0
     transport_hint: 'raw'
-    publish_tag_detections_image: true
+    # false: ảnh annotated 640x480x30 BGR8 = ~27.6 MB/s và không node/RViz nào subscribe.
+    # Bật lại tạm thời khi cần debug bằng mắt xem tag có được nhận không.
+    publish_tag_detections_image: false
 
     # Tag definitions — 1 tag tag36h11 id=0, cạnh 28mm (0.028m).
     standalone_tags:

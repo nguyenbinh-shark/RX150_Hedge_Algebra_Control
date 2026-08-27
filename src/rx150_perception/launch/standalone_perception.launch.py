@@ -41,7 +41,7 @@ def generate_launch_description():
             # (tên cũ 'rgb_camera.profile' bị drop silently).
             'rgb_camera.color_profile': '640x480x30',
             'depth_module.depth_profile': '640x480x30',
-            'pointcloud.enable': 'true',
+            'pointcloud.enable': LaunchConfiguration('pointcloud_enable'),
         }.items(),
     )
 
@@ -82,6 +82,14 @@ def generate_launch_description():
         name='rviz2',
         output='screen',
         arguments=['-d', LaunchConfiguration('rvizconfig')],
+        # Render trên GPU rời NVIDIA. `prime-select` đang là `on-demand`, thiếu 3 biến này
+        # thì RViz rơi về iGPU Intel — GPU đang xuất hình và dùng chung băng thông RAM với
+        # CPU, vẽ point cloud ở đó là treo cả compositor.
+        additional_env={
+            '__NV_PRIME_RENDER_OFFLOAD': '1',
+            '__GLX_VENDOR_LIBRARY_NAME': 'nvidia',
+            '__VK_LAYER_NV_optimus': 'NVIDIA_only',
+        },
         condition=IfCondition(LaunchConfiguration('use_rviz')),
     )
 
@@ -93,8 +101,14 @@ def generate_launch_description():
             'use_apriltag', default_value='true',
             description='bật AprilTag detector đơn lẻ.'),
         DeclareLaunchArgument(
-            'use_pointcloud_tuner_gui', default_value='true',
-            description='hiện cửa sổ GUI chỉnh tham số lọc PointCloud.'),
+            'pointcloud_enable', default_value='false',
+            choices=('true', 'false'),
+            description=(
+                'bật stream point cloud XYZRGB (~295 MB/s ở 640x480x30). Tắt mặc định; '
+                'chỉ bật khi thực sự cần nhánh PCL hoặc xem cloud trong RViz.'),),
+        DeclareLaunchArgument(
+            'use_pointcloud_tuner_gui', default_value='false',
+            description='hiện cửa sổ GUI chỉnh tham số lọc PointCloud (thêm 1 process Qt).'),
         DeclareLaunchArgument(
             'use_rviz', default_value='true',
             description='hiện giao diện 3D RViz2.'),
@@ -102,8 +116,11 @@ def generate_launch_description():
             'rvizconfig', default_value=default_rviz_config,
             description='file cấu hình rviz.'),
         DeclareLaunchArgument(
-            'enable_pipeline', default_value='true',
-            description='bật pipeline lọc pointcloud liên tục.'),
+            'enable_pipeline', default_value='false',
+            description=(
+                'bật pipeline lọc pointcloud chạy LIÊN TỤC. Upstream cố tình để false "to '
+                'save computer processing power" — chuỗi PCL chạy đơn luồng trên mọi frame. '
+                'Nếu false, pipeline chỉ chạy khi gọi service get_cluster_positions.'),),
         DeclareLaunchArgument(
             'filter_ns', default_value='pc_filter',
             description='namespace cho pointcloud pipeline.'),

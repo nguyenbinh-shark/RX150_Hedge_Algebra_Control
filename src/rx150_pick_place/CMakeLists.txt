@@ -13,6 +13,7 @@ find_package(ament_cmake REQUIRED)
 install(
   PROGRAMS
     scripts/pick_place_moveit_node.py
+    scripts/tube_rack_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

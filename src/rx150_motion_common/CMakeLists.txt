@@ -12,10 +12,15 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 
-# Install Python scripts (bridge + GUI)
+# Install Python scripts (bridge + GUI + tuning/hiệu chuẩn HAC)
 install(PROGRAMS
   scripts/rx150_trajectory_bridge.py
   scripts/rx150_tuning_gui.py
+  scripts/tuning_lib.py
+  scripts/rx150_tuning_session.py
+  scripts/rx150_run_compare.py
+  scripts/rx150_gravity_id.py
+  scripts/rx150_friction_id.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install shared config (motor yaml, sensors_3d)

@@ -3,7 +3,16 @@
 **Hệ thống:** Cánh tay Robot Interbotix RX150 + Camera Intel RealSense D435i + ROS 2 Humble  
 **Bộ điều khiển:** `rx150_fuzzy_controller` (PWM closed-loop + MoveIt)  
 **Pipeline Thị giác:** `interbotix_perception_modules` (PCL C++ Filter + ArmTag Calibration + Static TF Tools)  
-**Ngày hoàn thiện:** 23/08/2026  
+**Ngày hoàn thiện:** 23/08/2026 · **Cập nhật:** 27/08/2026
+
+> **Trạng thái 27/08/2026 — guide này VẪN DÙNG ĐƯỢC.** Hai luồng perception song song:
+> - **Luồng PCL (guide này):** pc_filter + ArmTag + `demos/pick_place.py`. Thay đổi duy
+>   nhất: Terminal 1 phải thêm `rs_camera_pointcloud_enable:=true` (xem mục 2.1).
+> - **Luồng YOLO (gắp ống nghiệm):** `yolo_tube_detector_node` + `tube_rack.launch.py`
+>   (package `rx150_pick_place`) — không cần point cloud, chạy trên GPU A4000.
+>
+> Phần **hiệu chuẩn ArmTag (mục 2.2)** dùng chung cho CẢ HAI luồng — calib một lần,
+> `static_transforms.yaml` phục vụ cả PCL lẫn YOLO.
 
 ---
 
@@ -74,9 +83,16 @@ Mở **Terminal 1**:
 source ~/interbotix_ws/install/setup.bash
 ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
     use_camera:=true \
+    rs_camera_pointcloud_enable:=true \
     use_camera_static_tf:=false \
     use_handeye_publisher:=false
 ```
+> ⚠️ **Từ 27/08/2026:** `rs_camera_pointcloud_enable` mặc định đã chuyển thành **`false`**
+> (stream XYZRGB ~295 MB/s là một trong các nguyên nhân đơ máy; luồng YOLO `tube_rack`
+> không dùng nó). **Luồng PCL trong guide này thì BẮT BUỘC truyền `:=true`** như trên —
+> thiếu cờ này pc_filter/tuner GUI sẽ trống trơn và `pick_place.py` không thấy cụm nào.
+> Áp dụng y hệt cho `hac_moveit.launch.py` / `ff_moveit.launch.py`.
+
 *(Nếu muốn chạy mô phỏng không cắm dây robot thật, thêm tham số `use_sim:=true`).*
 
 ---
@@ -90,6 +106,11 @@ ros2 launch rx150_perception rx150_perception.launch.py \
     use_armtag_tuner_gui:=true \
     use_rviz:=true
 ```
+
+*(Từ 27/08/2026, launch này có thêm `use_camera:=true` để tự khởi động camera khi chạy
+ĐỘC LẬP không có Terminal 1 — nhưng đừng bật khi T1 đang mở camera, hai driver cùng một
+thiết bị sẽ lỗi "Device or resource busy". Muốn dùng PointCloud Tuner ở chế độ độc lập thì
+thêm cả `pointcloud_enable:=true`.)*
 
 **Cách hiệu chuẩn ArmTag (Chỉ cần làm 1 lần hoặc khi di chuyển camera):**
 1. Đưa tay robot ra trước camera sao cho tấm AprilTag (tag36h11 id 0) nằm rõ nét trong khung nhìn.
@@ -139,6 +160,9 @@ python3 pick_place.py
 * **Khắc phục:** 
   1. Trong mục `PointCloud2` trên RViz $\rightarrow$ mở rộng mục `Topic` $\rightarrow$ đổi `Reliability Policy` từ `Reliable` thành **`Best Effort`**.
   2. Đổi `Color Transformer` thành `RGB8`.
+  3. *(Từ 27/08/2026 các file `.rviz` trong repo — `rx150_perception.rviz`,
+     `standalone_perception.rviz` — đã đặt sẵn Best Effort + Depth 1, chỉ cần chỉnh tay
+     nếu tự thêm display mới.)*
 
 ---
 

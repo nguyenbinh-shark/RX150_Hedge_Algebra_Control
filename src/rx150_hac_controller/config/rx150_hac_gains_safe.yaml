@@ -1,0 +1,35 @@
+# Bộ gain AN TOÀN dùng khi chạy hiệu chuẩn tự động (rx150_gravity_id.py,
+# rx150_friction_id.py) hoặc session tuning đầu tiên trên 1 pose lạ: u_max
+# thấp hơn + vận tốc/gia tốc profile thấp hơn bản chính (rx150_hac_gains.yaml)
+# để giảm hậu quả nếu Gff/gravity_sign/friction đang sai trong lúc ID.
+#
+# Nạp bằng: ros2 launch rx150_hac_controller hac_control.launch.py \
+#     gains_file:=rx150_hac_gains_safe.yaml
+/rx150/hac_node:
+  ros__parameters:
+    group_name: "arm"
+    loop_rate: 100.0
+    watchdog_timeout: 0.2
+    reference_pose: [0.0, -1.80, 1.55, 0.8, 0.0]
+    a: 0.3
+    b: 12.0
+    c: 1200.0
+    error_limit: [0.5, 0.333, 0.333, 0.2, 0.5]
+    error_dot_limit: [3.14, 3.14, 3.14, 3.14, 3.14]
+    # Nắp an toàn thấp hơn bản chính (600 -> giảm) — B0/B1/B2 chấp nhận bám
+    # kém hơn một chút để đổi lấy biên an toàn khi Gff/sign/friction chưa đúng.
+    u_max: [500.0, 600.0, 500.0, 400.0, 400.0]
+    enable_gravity_comp: true
+    Gff: [150.0, 255.0, 255.0, 500.0, 200.0]
+    gravity_sign: [1.0, 1.0, 1.0, 1.0, 1.0]
+    gravity_model_source: "pinocchio"
+    friction_coulomb: [0.0, 0.0, 0.0, 0.0, 0.0]
+    friction_viscous: [0.0, 0.0, 0.0, 0.0, 0.0]
+    friction_eps: 0.05
+    enable_profile: true
+    # Thấp hơn nhiều so với bản chính (π, 5.0) — ID chạy chậm, có thời gian
+    # phản ứng nếu Gff/sign sai gây dao động/giật.
+    max_velocities:    [0.5, 0.5, 0.5, 0.5, 0.5]
+    max_accelerations: [1.0, 1.0, 1.0, 1.0, 1.0]
+    max_jerk: 0.0
+    sync_mode: false

@@ -48,6 +48,7 @@ def build_topics(prefix):
         'edot': (f'{prefix}/edot',        'vel'),       # error derivative
         'eff':  (f'{prefix}/effort',      'eff'),       # control effort (PWM)
         'grav': (f'{prefix}/gravity',     'eff'),       # gravity compensation
+        'fric': (f'{prefix}/friction',    'eff'),       # friction feedforward (chỉ HAC publish)
     }
 
 
@@ -97,6 +98,9 @@ class CsvLogger(Node):
         # gravity
         for j in ARM_JOINTS:
             self._header.append(f'{j}_grav')
+        # friction (chỉ có giá trị khi controller là HAC; controller khác để trống)
+        for j in ARM_JOINTS:
+            self._header.append(f'{j}_fric')
 
         # --- Open CSV ---
         abs_path = os.path.abspath(self._output_file)
@@ -207,6 +211,10 @@ class CsvLogger(Node):
             # gravity
             grav_msg = self._latest.get('grav')
             row.extend(self._fmt(v) for v in self._extract_joint_values(grav_msg, 'effort'))
+
+            # friction (chỉ HAC)
+            fric_msg = self._latest.get('fric')
+            row.extend(self._fmt(v) for v in self._extract_joint_values(fric_msg, 'effort'))
 
             self._writer.writerow(row)
             self._row_count += 1

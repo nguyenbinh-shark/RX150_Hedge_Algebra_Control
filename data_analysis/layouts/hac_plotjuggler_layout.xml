@@ -1,0 +1,187 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- PlotJuggler layout cho fuzzy controller rx150. Curve name theo plotjuggler_ros: <topic>.<field>[i].
+     Neu plugin ban dung '/' thay '.', sua lai hoac keo curve thu cong roi Save Layout. -->
+<root>
+ <tabbed_widget parent="main_window" name="Main Window">
+  <Tab containers="1" tab_name="Position (rad)">
+   <Container>
+    <DockSplitter count="5" orientation="|" sizes="0.2;0.2;0.2;0.2;0.2">
+     <DockArea name="waist">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.position[0]"/>
+       <curve color="#d62728" name="/rx150/joint_states.position[0]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="shoulder">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.position[1]"/>
+       <curve color="#d62728" name="/rx150/joint_states.position[1]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="elbow">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.position[2]"/>
+       <curve color="#d62728" name="/rx150/joint_states.position[2]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_angle">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.position[3]"/>
+       <curve color="#d62728" name="/rx150/joint_states.position[3]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_rotate">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.position[4]"/>
+       <curve color="#d62728" name="/rx150/joint_states.position[4]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab containers="1" tab_name="Velocity (rad/s)">
+   <Container>
+    <DockSplitter count="5" orientation="|" sizes="0.2;0.2;0.2;0.2;0.2">
+     <DockArea name="waist">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.velocity[0]"/>
+       <curve color="#d62728" name="/rx150/joint_states.velocity[0]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="shoulder">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.velocity[1]"/>
+       <curve color="#d62728" name="/rx150/joint_states.velocity[1]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="elbow">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.velocity[2]"/>
+       <curve color="#d62728" name="/rx150/joint_states.velocity[2]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_angle">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.velocity[3]"/>
+       <curve color="#d62728" name="/rx150/joint_states.velocity[3]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_rotate">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1f77b4" name="/rx150/hac/reference.velocity[4]"/>
+       <curve color="#d62728" name="/rx150/joint_states.velocity[4]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab containers="1" tab_name="PWM">
+   <Container>
+    <DockSplitter count="5" orientation="|" sizes="0.2;0.2;0.2;0.2;0.2">
+     <DockArea name="waist">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1ac938" name="/rx150/hac/effort.effort[0]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="shoulder">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1ac938" name="/rx150/hac/effort.effort[1]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="elbow">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1ac938" name="/rx150/hac/effort.effort[2]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_angle">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1ac938" name="/rx150/hac/effort.effort[3]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_rotate">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#1ac938" name="/rx150/hac/effort.effort[4]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <Tab containers="1" tab_name="Error (rad)">
+   <Container>
+    <DockSplitter count="5" orientation="|" sizes="0.2;0.2;0.2;0.2;0.2">
+     <DockArea name="waist">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#ff7f0e" name="/rx150/hac/error.position[0]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="shoulder">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#ff7f0e" name="/rx150/hac/error.position[1]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="elbow">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#ff7f0e" name="/rx150/hac/error.position[2]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_angle">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#ff7f0e" name="/rx150/hac/error.position[3]"/>
+      </plot>
+     </DockArea>
+     <DockArea name="wrist_rotate">
+      <plot style="Lines" mode="TimeSeries" flip_y="false" flip_x="false">
+       <range bottom="-1" left="0" right="10" top="1"/>
+       <limitY/>
+       <curve color="#ff7f0e" name="/rx150/hac/error.position[4]"/>
+      </plot>
+     </DockArea>
+    </DockSplitter>
+   </Container>
+  </Tab>
+  <currentTabIndex index="0"/>
+ </tabbed_widget>
+ <use_relative_time_offset enabled="1"/>
+ <Plugins/>
+ <previouslyLoaded_Datafiles/>
+ <customMathEquations/>
+ <snippets/>
+</root>

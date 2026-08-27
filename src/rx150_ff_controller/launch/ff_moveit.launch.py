@@ -205,7 +205,18 @@ def launch_setup(context, *args, **kwargs):
         'publish_transforms_updates': True,
     }
 
-    sensor_parameters = load_yaml('rx150_motion_common', 'config/sensors_3d.yaml')
+    use_octomap = LaunchConfiguration('use_octomap').perform(context).lower() == 'true'
+    sensor_parameters = load_yaml('rx150_motion_common', 'config/sensors_3d.yaml') if use_octomap else {}
+
+    # OctoMap reads /camera/camera/depth/color/points, which the driver only publishes when
+    # rs_camera_pointcloud_enable is true. That default is now false (the stream is ~295 MB/s
+    # and has no other consumer), so say so loudly instead of silently building an empty map.
+    if use_octomap and rs_camera_pointcloud_enable_launch_arg.perform(context).lower() != 'true':
+        print(
+            '[WARN] use_octomap:=true but rs_camera_pointcloud_enable:=false -> move_group '
+            'will never receive a pointcloud and the OctoMap stays empty. Relaunch with '
+            'rs_camera_pointcloud_enable:=true.'
+        )
 
     remappings = [
         (
@@ -243,8 +254,7 @@ def launch_setup(context, *args, **kwargs):
             moveit_controllers,
             planning_scene_monitor_parameters,
             joint_limits,
-            sensor_parameters,
-        ],
+        ] + ([sensor_parameters] if (use_octomap and sensor_parameters) else []),
         remappings=remappings,
         output={'both': 'screen'},
     )
@@ -268,6 +278,14 @@ def launch_setup(context, *args, **kwargs):
             kinematics_config,
             {'use_sim_time': False},
         ],
+        # Render on the discrete NVIDIA GPU. `prime-select` is `on-demand` on this machine,
+        # so without these RViz falls back to the Intel iGPU, which shares RAM bandwidth
+        # with the CPUs and drives the display -- point clouds there stall the compositor.
+        additional_env={
+            '__NV_PRIME_RENDER_OFFLOAD': '1',
+            '__GLX_VENDOR_LIBRARY_NAME': 'nvidia',
+            '__VK_LAYER_NV_optimus': 'NVIDIA_only',
+        },
         remappings=remappings,
         output={'both': 'log'},
     )
@@ -423,9 +441,21 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             'rs_camera_pointcloud_enable',
-            default_value='true',
+            default_value='false',
             choices=('true', 'false'),
-            description='enable the colored pointcloud stream (rs_launch pointcloud.enable).',
+            description=(
+                'enable the colored pointcloud stream (rs_launch pointcloud.enable). OFF by '
+                'default: XYZRGB 640x480x30 is ~295 MB/s and nothing subscribes to it in the '
+                'normal flow. Turn it back on for use_octomap:=true or the PCL pipeline.'
+            ),
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'use_octomap',
+            default_value='false',
+            choices=('true', 'false'),
+            description='enable OctoMap 3D obstacle avoidance from pointcloud. Disabled by default.',
         )
     )
     declared_arguments.append(

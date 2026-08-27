@@ -268,12 +268,12 @@ Visualization Manager:
       Size (m): 0.009999999776482582
       Style: Points
       Topic:
-        Depth: 5
+        Depth: 1
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /camera/camera/depth/color/points
+        Value: /pc_filter/pointcloud/filtered
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -297,10 +297,10 @@ Visualization Manager:
       Name: ColorImage
       Normalize Range: true
       Topic:
-        Depth: 5
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /camera/camera/color/image_raw
       Value: true
     - Class: rviz_default_plugins/MarkerArray
@@ -319,7 +319,7 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: rx150/base_link
-    Frame Rate: 30
+    Frame Rate: 10
   Name: root
   Tools: ~
   Transformation:

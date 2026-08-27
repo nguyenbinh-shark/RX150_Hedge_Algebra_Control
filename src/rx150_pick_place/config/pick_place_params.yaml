@@ -19,9 +19,9 @@
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
     detection_wait_s: 10.0
     # ---- Nguồn phát hiện vật ----
-    # '/yolo/detected_objects' (mặc định) hoặc '/pcl/detected_objects' khi launch
-    # với detector:=pcl (launch override giá trị này — không cần sửa file).
-    detection_topic: /yolo/detected_objects
+    # Topic PoseArray do yolo_tube_detector_node publish. Nhánh PCL đã bỏ (commit 60a6dde)
+    # nên đây là nguồn duy nhất. File YAML này là nguồn sự thật — launch KHÔNG override.
+    detection_topic: /yolo/detected_tubes
     # ---- Gripper ----
     # true  = qua MoveIt gripper_trajectory_bridge (stall-aware, giữ lực khi vận chuyển) — khuyến nghị
     # false = raw PWM JointSingleCommand (fallback, như test_pick_place_moveit.py)

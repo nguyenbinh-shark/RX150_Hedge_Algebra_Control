@@ -49,9 +49,9 @@ HacNode::HacNode() : rclcpp::Node("hac_node") {
   reference_ =
       this->declare_parameter<std::vector<double>>("reference_pose", std::vector<double>());
 
-  a_ = this->declare_parameter<double>("a", 1.0);
-  b_ = this->declare_parameter<double>("b", 1.0);
-  c_ = this->declare_parameter<double>("c", 1.0);
+  a_ = this->declare_parameter<double>("a", 0.3);
+  b_ = this->declare_parameter<double>("b", 12.0);
+  c_ = this->declare_parameter<double>("c", 1200.0);
   if (!validHacParameters(a_, b_, c_)) {
     throw std::invalid_argument(
         "invalid HAC parameters: a, b, c, and the derived gains must be finite; "
@@ -68,9 +68,20 @@ HacNode::HacNode() : rclcpp::Node("hac_node") {
 
   enable_gravity_comp_ = this->declare_parameter<bool>("enable_gravity_comp", true);
   Gff_ = this->declare_parameter<std::vector<double>>(
-      "Gff", std::vector<double>{885.0, 632.0, 632.0, 885.0, 885.0});
+      "Gff", std::vector<double>{150.0, 255.0, 255.0, 500.0, 200.0});
   gravity_sign_ = this->declare_parameter<std::vector<double>>(
       "gravity_sign", std::vector<double>{1.0, 1.0, 1.0, 1.0, 1.0});
+  gravity_model_source_ = this->declare_parameter<std::string>(
+      "gravity_model_source", "pinocchio");
+  fitted_gravity_coeffs_ = this->declare_parameter<std::vector<double>>(
+      "fitted_gravity_coeffs", std::vector<double>(12, 0.0));
+
+  friction_coulomb_ = this->declare_parameter<std::vector<double>>(
+      "friction_coulomb", std::vector<double>{0.0, 0.0, 0.0, 0.0, 0.0});
+  friction_viscous_ = this->declare_parameter<std::vector<double>>(
+      "friction_viscous", std::vector<double>{0.0, 0.0, 0.0, 0.0, 0.0});
+  friction_eps_ = this->declare_parameter<double>("friction_eps", 0.05);
+
   this->declare_parameter<std::string>("robot_description", "");
 
   cli_info_ =
@@ -108,6 +119,10 @@ HacNode::HacNode() : rclcpp::Node("hac_node") {
       "hac/reference", rclcpp::SensorDataQoS());
   pub_grav_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "hac/gravity", rclcpp::SensorDataQoS());
+  pub_grav_torque_ = this->create_publisher<sensor_msgs::msg::JointState>(
+      "hac/gravity_torque", rclcpp::SensorDataQoS());
+  pub_fric_ = this->create_publisher<sensor_msgs::msg::JointState>(
+      "hac/friction", rclcpp::SensorDataQoS());
   pub_cmd_ = this->create_publisher<interbotix_xs_msgs::msg::JointGroupCommand>(
       "commands/joint_group", 10);
 
@@ -173,12 +188,20 @@ void HacNode::onRobotInfo(
 
   const size_t n = joint_names_.size();
   if (error_limit_.size() != n || error_dot_limit_.size() != n ||
-      u_max_.size() != n || reference_.size() != n) {
+      u_max_.size() != n || reference_.size() != n ||
+      friction_coulomb_.size() != n || friction_viscous_.size() != n) {
     RCLCPP_ERROR(
         this->get_logger(),
         "param size mismatch: joints=%zu, error_limit=%zu, error_dot_limit=%zu, u_max=%zu, "
-        "reference=%zu",
-        n, error_limit_.size(), error_dot_limit_.size(), u_max_.size(), reference_.size());
+        "reference=%zu, friction_coulomb=%zu, friction_viscous=%zu",
+        n, error_limit_.size(), error_dot_limit_.size(), u_max_.size(), reference_.size(),
+        friction_coulomb_.size(), friction_viscous_.size());
+    return;
+  }
+  if (fitted_gravity_coeffs_.size() != 12) {
+    RCLCPP_ERROR(
+        this->get_logger(), "fitted_gravity_coeffs must have exactly 12 values (got %zu)",
+        fitted_gravity_coeffs_.size());
     return;
   }
 
@@ -286,11 +309,12 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
   double next_a = a_;
   double next_b = b_;
   double next_c = c_;
+  double next_friction_eps = friction_eps_;
 
   for (const auto & parameter : params) {
     const std::string & name = parameter.get_name();
-    const bool is_hac_parameter = name == "a" || name == "b" || name == "c";
-    if (is_hac_parameter) {
+    const bool is_scalar = name == "a" || name == "b" || name == "c" || name == "friction_eps";
+    if (is_scalar) {
       if (parameter.get_type() != rclcpp::PARAMETER_DOUBLE) {
         result.successful = false;
         result.reason = name + " must be a double scalar";
@@ -302,15 +326,20 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
         next_a = value;
       } else if (name == "b") {
         next_b = value;
-      } else {
+      } else if (name == "c") {
         next_c = value;
+      } else {
+        next_friction_eps = value;
       }
       continue;
     }
 
-    const bool is_gain = name == "error_limit" || name == "error_dot_limit" ||
-                         name == "u_max" || name == "Gff";
-    if (!is_gain) {
+    const bool is_joint_array = name == "error_limit" || name == "error_dot_limit" ||
+                               name == "u_max" || name == "Gff" ||
+                               name == "friction_coulomb" || name == "friction_viscous" ||
+                               name == "max_velocities" || name == "max_accelerations";
+    const bool is_coeff_array = name == "fitted_gravity_coeffs";
+    if (!is_joint_array && !is_coeff_array) {
       continue;
     }
     if (parameter.get_type() != rclcpp::PARAMETER_DOUBLE_ARRAY) {
@@ -320,10 +349,11 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
     }
 
     const std::vector<double> values = parameter.as_double_array();
-    if (values.size() != error_limit_.size()) {
+    const size_t expected = is_coeff_array ? 12 : error_limit_.size();
+    if (values.size() != expected) {
       result.successful = false;
       result.reason = name + " size " + std::to_string(values.size()) + " != " +
-                      std::to_string(error_limit_.size());
+                      std::to_string(expected);
       break;
     }
   }
@@ -338,6 +368,11 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
         "positive double scalars";
     return result;
   }
+  if (!std::isfinite(next_friction_eps) || next_friction_eps <= 0.0) {
+    result.successful = false;
+    result.reason = "friction_eps must be finite and positive";
+    return result;
+  }
 
   for (const auto & parameter : params) {
     const std::string & name = parameter.get_name();
@@ -350,9 +385,14 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
     } else if (name == "c") {
       c_ = parameter.as_double();
       RCLCPP_INFO(this->get_logger(), "live param c = %g", c_);
+    } else if (name == "friction_eps") {
+      friction_eps_ = parameter.as_double();
+      RCLCPP_INFO(this->get_logger(), "live param friction_eps = %g", friction_eps_);
     } else if (
         name == "error_limit" || name == "error_dot_limit" || name == "u_max" ||
-        name == "Gff") {
+        name == "Gff" || name == "friction_coulomb" || name == "friction_viscous" ||
+        name == "fitted_gravity_coeffs" || name == "max_velocities" ||
+        name == "max_accelerations") {
       const std::vector<double> values = parameter.as_double_array();
       if (name == "error_limit") {
         error_limit_ = values;
@@ -360,8 +400,28 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
         error_dot_limit_ = values;
       } else if (name == "u_max") {
         u_max_ = values;
-      } else {
+      } else if (name == "Gff") {
         Gff_ = values;
+      } else if (name == "friction_coulomb") {
+        friction_coulomb_ = values;
+      } else if (name == "friction_viscous") {
+        friction_viscous_ = values;
+      } else if (name == "max_velocities") {
+        max_velocities_ = values;
+        if (profile_configured_ && max_velocities_.size() == kProfileDoF) {
+          for (size_t i = 0; i < kProfileDoF; ++i) {
+            otg_in_.max_velocity[i] = max_velocities_[i];
+          }
+        }
+      } else if (name == "max_accelerations") {
+        max_accelerations_ = values;
+        if (profile_configured_ && max_accelerations_.size() == kProfileDoF) {
+          for (size_t i = 0; i < kProfileDoF; ++i) {
+            otg_in_.max_acceleration[i] = max_accelerations_[i];
+          }
+        }
+      } else {
+        fitted_gravity_coeffs_ = values;
       }
       RCLCPP_INFO(
           this->get_logger(), "live param %s updated (%zu values)", name.c_str(),
@@ -414,6 +474,15 @@ void HacNode::onTimer() {
   gravity_msg.name = joint_names_;
   gravity_msg.effort.assign(n, 0.0);
 
+  sensor_msgs::msg::JointState grav_torque_msg;
+  grav_torque_msg.header.stamp = stamp;
+  grav_torque_msg.name = joint_names_;
+
+  sensor_msgs::msg::JointState friction_msg;
+  friction_msg.header.stamp = stamp;
+  friction_msg.name = joint_names_;
+  friction_msg.effort.assign(n, 0.0);
+
   std::vector<double> current_positions(n, 0.0);
   for (size_t i = 0; i < n; ++i) {
     const size_t index = js_index_.at(joint_names_[i]);
@@ -463,9 +532,23 @@ void HacNode::onTimer() {
   }
   pub_ref_->publish(reference_msg);
 
-  std::vector<double> gravity_torques(n, 0.0);
-  if (grav_comp_ && enable_gravity_comp_) {
-    gravity_torques = grav_comp_->compute(current_positions);
+  // Pinocchio raw torque (N·m) LUÔN được tính (kể cả enable_gravity_comp=false)
+  // để B0/B1 (rx150_gravity_id.py) có tín hiệu tham chiếu độc lập với
+  // Gff/gravity_sign qua topic hac/gravity_torque; cũng dùng làm cross-check
+  // khi gravity_model_source=fitted.
+  std::vector<double> gravity_pinocchio(n, 0.0);
+  if (grav_comp_) {
+    gravity_pinocchio = grav_comp_->compute(current_positions);
+  }
+  grav_torque_msg.effort = gravity_pinocchio;
+
+  // fitted_gravity_coeffs được fit TRỰC TIẾP ở đơn vị PWM (rx150_gravity_id.py,
+  // mode identify) — hấp thụ luôn sai số Gff lẫn khối lượng URDF, nên KHÔNG
+  // nhân thêm Gff/gravity_sign (khác với đường Pinocchio bên dưới, vốn ra N·m
+  // và cần Gff*sign để đổi sang PWM).
+  std::vector<double> fitted_gravity_pwm(n, 0.0);
+  if (gravity_model_source_ == "fitted") {
+    fitted_gravity_pwm = GravityCompensation::computeFitted(current_positions, fitted_gravity_coeffs_);
   }
 
   for (size_t i = 0; i < n; ++i) {
@@ -490,10 +573,25 @@ void HacNode::onTimer() {
     double output = static_cast<double>(un);
 
     double gravity_pwm = 0.0;
-    if (grav_comp_ && enable_gravity_comp_) {
-      gravity_pwm = gravity_torques[i] * Gff_[i] * gravity_sign_[i];
+    if (enable_gravity_comp_) {
+      if (gravity_model_source_ == "fitted") {
+        gravity_pwm = fitted_gravity_pwm[i];
+      } else if (grav_comp_) {
+        gravity_pwm = gravity_pinocchio[i] * Gff_[i] * gravity_sign_[i];
+      }
     }
     output += gravity_pwm;
+
+    // Friction feedforward (Coulomb + viscous), SAU gravity, TRƯỚC clamp
+    // ±u_max. Dùng vận tốc ĐO (velocity), không dùng error_dot: error_dot
+    // phản ánh sai số bám theo profile, không phải chuyển động thực của khớp.
+    // Nếu velocity đo bị rung -> tăng friction_eps_ (không thêm filter, filter
+    // gây trễ phá tác dụng feedforward).
+    const double friction_pwm =
+        friction_coulomb_[i] * std::tanh(velocity / friction_eps_) +
+        friction_viscous_[i] * velocity;
+    output += friction_pwm;
+
     output = std::clamp(output, -u_max_[i], u_max_[i]);
 
     command[i] = static_cast<float>(output);
@@ -501,6 +599,7 @@ void HacNode::onTimer() {
     edot_msg.velocity[i] = error_dot;
     effort_msg.effort[i] = output;
     gravity_msg.effort[i] = gravity_pwm;
+    friction_msg.effort[i] = friction_pwm;
   }
 
   interbotix_xs_msgs::msg::JointGroupCommand command_msg;
@@ -512,6 +611,8 @@ void HacNode::onTimer() {
   pub_edot_->publish(edot_msg);
   pub_eff_->publish(effort_msg);
   pub_grav_->publish(gravity_msg);
+  pub_grav_torque_->publish(grav_torque_msg);
+  pub_fric_->publish(friction_msg);
 }
 
 int main(int argc, char ** argv) {

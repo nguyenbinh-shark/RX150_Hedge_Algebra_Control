@@ -1,0 +1,78 @@
+# Tham số cho tube_rack_node — gắp ống nghiệm → cắm lên giá nghiêng.
+# /** áp dụng cho node nào load file này.
+# TUNE slot0/spacing/rack_angle_deg cho giá thật của bạn.
+# Đo slot0: dùng RViz click / log detection ống cắm sẵn trong giá.
+/**:
+  ros__parameters:
+    # ---- Home ----
+    home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
+    auto_start: true          # true: chạy ngay khi launch; false: chờ /tube_rack/run
+    dry_run: false            # true: chỉ tính IK + log, không gửi MoveGroup goal
+
+    # ---- Detection ----
+    detection_topic: /yolo/detected_tubes
+    classes_topic: /yolo/tube_classes
+    detection_wait_s: 10.0    # s — chờ detection tối đa trước khi bỏ cuộc
+    median_frames: 5          # số frame thu thập để tính median (chống nhiễu)
+    median_collect_s: 1.0     # s — thời gian thu thập median frames
+
+    # ---- Fake tubes (dry-run / verify IK không cần camera) ----
+    # JSON list: [{"x":0.20,"y":0.05,"z":0.03,"yaw":0.0,"class":"pink"}, ...]
+    fake_tubes: "[]"
+
+    # ---- Rack geometry (frame rx150/base_link) ----
+    # slot0: tọa độ slot đầu tiên (đo bằng tay hoặc calibrate bằng ống cắm sẵn)
+    slot0_x: 0.24
+    slot0_y: -0.01
+    slot0_z: 0.10             # z đỉnh slot (nơi miệng lỗ cắm)
+    rack_angle_deg: 62.0      # góc nghiêng giá (so với phương ngang)
+    slot_spacing: 0.12        # m — khoảng cách giữa 2 slot (dọc mặt giá)
+    num_slots: 4              # tổng số slot trên giá
+    rack_filter_xy_m: 0.05    # m — bán kính XY loại bỏ ống đã nằm trong vùng giá
+
+    # ---- Color → slot priority ----
+    # Mỗi màu map tới list slot index ưu tiên (slot 0,1,2,3)
+    # Ống unknown hoặc không có mapping → lấy slot trống bất kỳ
+    color_slot_map:
+      pink:   [0]
+      blue:   [1]
+      green:  [2]
+      yellow: [3]
+
+    # ---- Grasp geometry ----
+    approach_delta: 0.08      # m — chênh z khi approach (cao trên ống)
+    tube_length: 0.10         # m — chiều dài ống nghiệm
+    insert_depth: 0.03        # m — chiều sâu cắm ống vào lỗ slot
+
+    # ---- IK pitch ladders ----
+    # grasp: cắm thẳng đứng từ trên xuống (1.5708 = 90°), relaxed dần nếu IK fail
+    grasp_pitch_ladder: [1.5708, 1.40, 1.25, 1.10, 0.95]
+    # place: ống thẳng đứng (0.0 rad), relaxed nếu slot xa
+    place_pitch_ladder: [0.0, 0.15, 0.3]
+
+    # ---- Velocity scales (0..1) ----
+    velocity_scale_cruise: 0.3
+    velocity_scale_descend: 0.12  # hạ xuống kẹp (chậm, an toàn)
+    velocity_scale_insert: 0.1    # cắm ống vào slot (rất chậm)
+    velocity_scale_lift: 0.2      # nhấc lên sau khi kẹp
+
+    # ---- Gripper ----
+    use_gripper_bridge: true  # true = MoveIt bridge (stall-aware); false = raw PWM
+
+    # ---- Collision: box bàn ----
+    add_table_collision: true
+    table_x: 0.30
+    table_y: 0.0
+    table_z: -0.05            # tâm box: đỉnh tại z = -0.05 + 0.05 = 0.00m
+    table_size_x: 0.80
+    table_size_y: 0.80
+    table_size_z: 0.10
+
+    # ---- Collision: box giá (thu nhỏ so với thực — planner tránh quét ngang) ----
+    add_rack_collision: true
+    rack_box_x: 0.30
+    rack_box_y: -0.01
+    rack_box_z: 0.10          # tâm box
+    rack_box_size_x: 0.15
+    rack_box_size_y: 0.10
+    rack_box_size_z: 0.20

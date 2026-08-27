@@ -22,6 +22,16 @@
     Gff: [150.0, 255.0, 255.0, 500.0, 200.0]
     # Dấu bù trọng lực: +1 hoặc -1, phụ thuộc Drive_Mode (reverse) của motor
     gravity_sign: [1.0, 1.0, 1.0, 1.0, 1.0]
+    # "pinocchio" (mặc định, RNEA + Gff/gravity_sign) hoặc "fitted" (basis lượng
+    # giác đã hiệu chuẩn, xem rx150_gravity_id.py + rx150_gravity_model.yaml —
+    # nạp file đó qua launch arg gravity_model_file để dùng fitted_gravity_coeffs).
+    gravity_model_source: "pinocchio"
+    # --- Friction feedforward (Coulomb + viscous), xem rx150_friction_id.py ---
+    # u_fric = friction_coulomb[i]*tanh(qd/friction_eps) + friction_viscous[i]*qd
+    # Mặc định 0 (no-op) tới khi hiệu chuẩn.
+    friction_coulomb: [0.0, 0.0, 0.0, 0.0, 0.0]
+    friction_viscous: [0.0, 0.0, 0.0, 0.0, 0.0]
+    friction_eps: 0.05
     # --- Profile vận tốc/gia tốc trước bộ HAC (Ruckig = TOTG, tương đương MoveIt2) ---
     enable_profile: true          # false = behavior cũ (step), để so sánh A/B
     max_velocities:    [3.14, 3.14, 3.14, 3.14, 3.14]  # rad/s (π, theo URDF); MoveIt2 đặt has_velocity_limits=false

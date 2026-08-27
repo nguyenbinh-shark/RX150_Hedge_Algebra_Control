@@ -94,25 +94,38 @@ def plot_error(df, joints, axes_list):
 
 
 def plot_pwm(df, joints, axes_list):
-    """PWM effort + gravity compensation."""
+    """PWM effort tách gravity comp + friction FF + phần controller thuần."""
     for i, joint in enumerate(joints):
         ax = axes_list[i]
         t = df['timestamp']
         color = get_joint_color(joint, i)
         pwm_col = f'{joint}_pwm'
         grav_col = f'{joint}_grav'
+        fric_col = f'{joint}_fric'
 
         if pwm_col in df.columns:
             ax.plot(t, df[pwm_col], color=color,
                     linewidth=0.6, label='total PWM')
-        if grav_col in df.columns and df[grav_col].notna().any():
+
+        has_grav = grav_col in df.columns and df[grav_col].notna().any()
+        has_fric = fric_col in df.columns and df[fric_col].notna().any()
+
+        if has_grav:
             ax.plot(t, df[grav_col], color='orange', linewidth=0.6,
                     alpha=0.7, label='gravity comp')
-            # fuzzy_only = total - gravity
-            if pwm_col in df.columns:
-                ctrl_only = df[pwm_col] - df[grav_col]
-                ax.plot(t, ctrl_only, color='green', linewidth=0.5,
-                        alpha=0.6, label='controller only')
+        if has_fric:
+            ax.plot(t, df[fric_col], color='#9b59b6', linewidth=0.6,
+                    alpha=0.7, label='friction FF')
+
+        # controller-only = total - gravity - friction (0 nếu cột thiếu)
+        if pwm_col in df.columns and (has_grav or has_fric):
+            ctrl_only = df[pwm_col].copy()
+            if has_grav:
+                ctrl_only = ctrl_only - df[grav_col]
+            if has_fric:
+                ctrl_only = ctrl_only - df[fric_col]
+            ax.plot(t, ctrl_only, color='green', linewidth=0.5,
+                    alpha=0.6, label='controller only')
 
         ax.axhline(y=0, color='gray', linewidth=0.5, linestyle='--')
         ax.set_ylabel(f'{joint}\n(PWM)')

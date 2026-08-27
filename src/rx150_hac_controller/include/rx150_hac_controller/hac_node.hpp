@@ -39,8 +39,8 @@ class HacNode : public rclcpp::Node {
   std::vector<double> reference_;
 
   double a_ = 0.3;
-  double b_ = 0.4;
-  double c_ = 3000;
+  double b_ = 12.0;
+  double c_ = 1200.0;
 
   bool enable_profile_ = false;
   std::vector<double> max_velocities_;
@@ -52,6 +52,12 @@ class HacNode : public rclcpp::Node {
   bool enable_gravity_comp_ = true;
   std::vector<double> Gff_;
   std::vector<double> gravity_sign_;
+  std::string gravity_model_source_ = "pinocchio";  // "pinocchio" | "fitted"
+  std::vector<double> fitted_gravity_coeffs_;        // 12 hệ số, xem gravity_comp.hpp
+
+  std::vector<double> friction_coulomb_;
+  std::vector<double> friction_viscous_;
+  double friction_eps_ = 0.05;
 
   std::optional<ruckig::Ruckig<kProfileDoF>> otg_;
   ruckig::InputParameter<kProfileDoF> otg_in_;
@@ -74,6 +80,8 @@ class HacNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_eff_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_ref_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_grav_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_grav_torque_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_fric_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::vector<std::string> joint_names_;

@@ -64,7 +64,9 @@ def generate_launch_description():
             # 'depth_module.depth_profile' (tên cũ 'rgb_camera.profile' bị drop silently).
             'rgb_camera.color_profile': '640x480x30',
             'depth_module.depth_profile': '640x480x30',
-            'pointcloud.enable': 'true',
+            # AprilTag chỉ cần ảnh color — point cloud ở đây không có consumer nào
+            # (~295 MB/s phí sạch, đủ để bão hoà CPU và làm đơ desktop).
+            'pointcloud.enable': 'false',
         }.items(),
     )
 

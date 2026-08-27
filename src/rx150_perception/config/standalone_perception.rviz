@@ -39,7 +39,8 @@ Visualization Manager:
       Name: TF
       Show Arrows: true
       Show Axes: true
-      Show Names: true
+      # Show Names dựng 1 text overlay cho MỖI frame, mỗi render pass — tốn GPU vô ích.
+      Show Names: false
       Value: true
     - Class: rviz_default_plugins/Image
       Enabled: true
@@ -49,10 +50,12 @@ Visualization Manager:
       Name: Color Image
       Normalize Range: false
       Topic:
-        Depth: 5
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        # Best Effort: dữ liệu sensor, thà rớt frame còn hơn để writer retransmit + block
+        # đúng lúc CPU đã bão hoà.
+        Reliability Policy: Best Effort
         Value: /camera/camera/color/image_raw
       Value: true
     - Alpha: 0.8
@@ -61,16 +64,17 @@ Visualization Manager:
       Color: 255; 255; 255
       Color Transformer: RGB8
       Decay Time: 0
-      Enabled: true
+      # Cloud thô 640x480x30 = ~295 MB/s. Tắt mặc định; chỉ bật khi thật sự cần nhìn cloud gốc.
+      Enabled: false
       Name: Raw PointCloud
       Point Size: 2
       Topic:
-        Depth: 5
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /camera/camera/depth/color/points
-      Value: true
+      Value: false
     - Alpha: 1
       Autostart: true
       Class: rviz_default_plugins/PointCloud2
@@ -81,10 +85,10 @@ Visualization Manager:
       Name: Filtered PointCloud
       Point Size: 4
       Topic:
-        Depth: 5
+        Depth: 1
         Durability Policy: Volatile
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /pc_filter/pointcloud/filtered
       Value: true
     - Class: rviz_default_plugins/Marker
@@ -101,7 +105,8 @@ Visualization Manager:
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: camera_color_optical_frame
-    Frame Rate: 30
+    # 10 Hz là đủ để nhìn; 30 Hz nhân ba tải render trên GPU đang xuất hình.
+    Frame Rate: 10
   Name: root
   Tools:
     - Class: rviz_default_plugins/Interact

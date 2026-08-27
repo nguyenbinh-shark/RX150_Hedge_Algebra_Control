@@ -1,21 +1,24 @@
-# rx150_perception.launch.py — Pipeline nhận diện PCL cho RX150 + RealSense D435i
+# rx150_perception.launch.py — Perception cho RX150 + RealSense D435i (armtag calib + TF).
 #
 # Kiến trúc theo chuẩn Interbotix (interbotix_xsarm_perception).
-# File này CHỈ khởi động perception nodes, KHÔNG khởi động robot hay camera.
+# KHÔNG khởi động robot. Camera thì TUỲ CHỌN qua use_camera (mặc định false).
 #
-# ĐIỀU KIỆN: Robot + Camera phải đang chạy từ fuzzy_moveit.launch.py:
-#   T1: ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
-#           use_camera:=true use_camera_static_tf:=false
-#
-# Chạy perception:
+# Luồng chuẩn — camera do T1 cấp:
+#   T1: ros2 launch rx150_hac_controller hac_moveit.launch.py use_camera_static_tf:=false
+#       (hoặc rx150_fuzzy_controller fuzzy_moveit.launch.py ...)
 #   T2: ros2 launch rx150_perception rx150_perception.launch.py
 #
-# Bật GUI tune pointcloud + snap ArmTag:
-#   T2: ros2 launch rx150_perception rx150_perception.launch.py \
-#           use_pointcloud_tuner_gui:=true use_armtag_tuner_gui:=true
+# Chạy ĐỘC LẬP (không có T1, hoặc T1 use_camera:=false) — camera + RViz đi cùng:
+#   ros2 launch rx150_perception rx150_perception.launch.py \
+#       use_camera:=true use_rviz:=true
+#   LƯU Ý: use_camera:=true khi T1 cũng đang mở camera -> lỗi "Device or resource busy".
 #
-# Chạy demo pick-place:
-#   T3: cd src/rx150_perception/demos && python3 pick_place.py
+# Snap Pose hiệu chuẩn ArmTag (cần robot ở T1 để có TF rx150/ar_tag_link):
+#   ros2 launch rx150_perception rx150_perception.launch.py \
+#       use_armtag_tuner_gui:=true use_rviz:=true
+#
+# Tuner PCL (chỉ khi cần nhánh point cloud; nhớ bật pointcloud ở nơi chạy camera):
+#   ... use_pointcloud_tuner_gui:=true pointcloud_enable:=true use_camera:=true
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -59,6 +62,32 @@ def launch_setup(context, *args, **kwargs):
     use_rviz_launch_arg = LaunchConfiguration('use_rviz')
     rviz_frame_launch_arg = LaunchConfiguration('rviz_frame')
     rvizconfig_launch_arg = LaunchConfiguration('rvizconfig')
+
+    # ---- 0. RealSense camera driver (tuỳ chọn) ----
+    # Mặc định TẮT vì luồng chuẩn là T1 (hac/fuzzy_moveit use_camera:=true) đã bật
+    # camera rồi — 2 driver cùng mở 1 thiết bị sẽ lỗi "Device or resource busy".
+    # Bật use_camera:=true khi chạy perception ĐỘC LẬP (calib, xem thử) không có T1
+    # hoặc T1 chạy với use_camera:=false.
+    rs_camera_launch_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('realsense2_camera'),
+                'launch',
+                'rs_launch.py',
+            ])
+        ]),
+        condition=IfCondition(LaunchConfiguration('use_camera')),
+        launch_arguments={
+            'camera_name': 'camera',
+            'camera_namespace': 'camera',
+            # realsense2_camera 4.58.3: tên param là 'rgb_camera.color_profile' /
+            # 'depth_module.depth_profile' (tên cũ bị drop silently).
+            'rgb_camera.color_profile': '640x480x30',
+            'depth_module.depth_profile': '640x480x30',
+            'align_depth.enable': 'true',
+            'pointcloud.enable': LaunchConfiguration('pointcloud_enable'),
+        }.items(),
+    )
 
     # ---- 1. PointCloud Filter Pipeline (C++) ----
     pc_filter_launch_include = IncludeLaunchDescription(
@@ -126,11 +155,19 @@ def launch_setup(context, *args, **kwargs):
             '-f', rviz_frame_launch_arg,
             '-d', rvizconfig_launch_arg,
         ],
+        # Render trên GPU rời NVIDIA — `prime-select` là `on-demand`, thiếu 3 biến này thì
+        # RViz rơi về iGPU Intel (GPU đang xuất hình, dùng chung băng thông RAM với CPU).
+        additional_env={
+            '__NV_PRIME_RENDER_OFFLOAD': '1',
+            '__GLX_VENDOR_LIBRARY_NAME': 'nvidia',
+            '__VK_LAYER_NV_optimus': 'NVIDIA_only',
+        },
         output={'both': 'log'},
         condition=IfCondition(use_rviz_launch_arg.perform(context)),
     )
 
     return [
+        rs_camera_launch_include,
         pc_filter_launch_include,
         armtag_launch_include,
         static_transform_pub_launch_include,
@@ -140,6 +177,31 @@ def launch_setup(context, *args, **kwargs):
 
 def generate_launch_description():
     declared_arguments = []
+
+    # ---- Camera ----
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'use_camera',
+            default_value='false',
+            choices=('true', 'false'),
+            description=(
+                'launch the RealSense driver from THIS file. Keep false when T1 '
+                '(hac/fuzzy_moveit) already runs the camera — two drivers on one '
+                'device fail with "resource busy".'
+            ),
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'pointcloud_enable',
+            default_value='false',
+            choices=('true', 'false'),
+            description=(
+                'enable the XYZRGB pointcloud stream (~295 MB/s) when use_camera:=true; '
+                'only needed for the PCL pipeline / pointcloud tuner GUI.'
+            ),
+        )
+    )
 
     # ---- PointCloud Filter ----
     declared_arguments.append(
