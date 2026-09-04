@@ -41,6 +41,7 @@ def launch_setup(context, *args, **kwargs):
     filter_ns_launch_arg = LaunchConfiguration('filter_ns')
     filter_params_launch_arg = LaunchConfiguration('filter_params')
     use_pointcloud_tuner_gui_launch_arg = LaunchConfiguration('use_pointcloud_tuner_gui')
+    use_pcl_pipeline_launch_arg = LaunchConfiguration('use_pcl_pipeline')
     enable_pipeline_launch_arg = LaunchConfiguration('enable_pipeline')
     cloud_topic_launch_arg = LaunchConfiguration('cloud_topic')
 
@@ -105,6 +106,7 @@ def launch_setup(context, *args, **kwargs):
             'cloud_topic': cloud_topic_launch_arg,
             'use_pointcloud_tuner_gui': use_pointcloud_tuner_gui_launch_arg,
         }.items(),
+        condition=IfCondition(use_pcl_pipeline_launch_arg),
     )
 
     # ---- 2. ArmTag (AprilTag detector + snap TF) ----
@@ -224,6 +226,18 @@ def generate_launch_description():
     )
     declared_arguments.append(
         DeclareLaunchArgument(
+            'use_pcl_pipeline',
+            default_value='true',
+            choices=('true', 'false'),
+            description=(
+                'chạy pc_filter (pointcloud_pipeline C++). Đặt false nếu chỉ dùng YOLO — '
+                'yolo_tube_detector tự deproject depth nên không đọc /pc_filter/*, để true chỉ '
+                'tốn một process nằm không.'
+            ),
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
             'use_pointcloud_tuner_gui',
             default_value='false',
             choices=('true', 'false'),
@@ -328,7 +342,7 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             'use_armtag_tuner_gui',
-            default_value='false',
+            default_value='true',
             choices=('true', 'false'),
             description='whether to show a GUI to publish the ref_frame to arm_base_frame transform.',
         )

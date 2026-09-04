@@ -1,0 +1,1 @@
+/home/hust/interbotix_ws/src/rx150_pick_place/scripts/rx150_reach_check.py

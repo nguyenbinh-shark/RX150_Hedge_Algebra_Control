@@ -1,20 +1,41 @@
+# roi_box_params.yaml — Hộp giới hạn VÙNG NHẬN DIỆN (Workspace ROI Box).
+#
+# yolo_tube_detector_node lọc mọi detection theo hộp này: tâm ống nằm ngoài hộp thì bị
+# bỏ, không vào /yolo/detected_tubes. Đây là thứ thay cho CropBox của pc_filter ngày trước.
+#
+# Toạ độ tính trong frame `target_frame` của node — mặc định `rx150/base_link`, tức gốc
+# ngay chân robot. Vì thế hộp phụ thuộc calib TF camera (config/static_transforms.yaml):
+# calib sai thì hộp nằm sai chỗ dù số ở đây đúng.
+#
+# File này nạp SAU yolo_detector_params.yaml nên các khoá dưới đây LUÔN THẮNG. Muốn ROI
+# đến từ launch/CLI thay vì file này: `roi_params_file:=none` (qua launch dùng '' cũng được;
+# `-p roi_params_file:=` trần thì rcl không parse nổi chuỗi rỗng).
+#
+# Chỉnh nóng, không cần khởi động lại (node đọc lại mỗi frame):
+#   ros2 param set /yolo_tube_detector roi_x_max 0.50
+#   ros2 param set /yolo_tube_detector enable_roi_box false
+# Xem hộp trong RViz: display `YoloMarkers` (/yolo/markers) — khung dây cyan 12 cạnh
+# (ns `workspace_roi_edges`) + khối đặc mờ (ns `workspace_roi`). Chỉnh độ dày/độ mờ:
+#   ros2 param set /yolo_tube_detector roi_edge_width 0.006
+#   ros2 param set /yolo_tube_detector roi_fill_alpha 0.0   # bỏ khối đặc, chỉ còn khung
+# Chốt xong thì ghi lại vào file này:
+#   ros2 param dump /yolo_tube_detector | grep roi
 /**:
   ros__parameters:
-    # Bật/tắt hộp giới hạn vùng làm việc
+    # Bật/tắt hộp giới hạn. false = nhận diện toàn khung hình.
     enable_roi_box: true
 
-    # Giới hạn trục X (mét) — Trước mặt robot (tầm với rx150: 0.10m -> 0.35m)
+    # Trục X (m) — hướng ra trước mặt robot. Tầm với thoải mái của rx150 ~0.10..0.35.
     roi_x_min: -0.10
     roi_x_max: 0.45
 
-    # Giới hạn trục Y (mét) — Sang 2 bên (âm là bên phải, dương là bên trái)
+    # Trục Y (m) — sang hai bên. Âm = bên phải robot, dương = bên trái.
     roi_y_min: -0.15
     roi_y_max:  0.30
 
-    # Giới hạn trục Z (mét) — Độ cao so với mặt bàn (z=0 là mặt bàn)
+    # Trục Z (m) — độ cao. z=0 là mặt bàn; min âm một chút để chịu sai số depth.
     roi_z_min: -0.02
     roi_z_max:  0.25
 
-    # Ngưỡng tin cậy của model YOLO (0.1 -> 1.0)
-    conf_threshold: 0.6
-
+# LƯU Ý: đừng đặt conf_threshold ở đây. Node chỉ đọc các khoá roi_* + enable_roi_box từ
+# file này; mọi tham số detector khác thuộc về config/yolo_detector_params.yaml.

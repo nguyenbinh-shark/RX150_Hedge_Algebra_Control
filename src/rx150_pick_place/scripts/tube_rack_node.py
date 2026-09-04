@@ -1,841 +1,481 @@
 #!/usr/bin/env python3
 """
-tube_rack_node — Gắp ống nghiệm nằm ngang → cắm thẳng đứng lên giá nghiêng, phân theo màu.
+tube_rack_node — gắp ống nghiệm nằm trên bàn → cắm vào giá, phân theo màu.
 
-Kiến trúc (Layer 2):
-  - Input:  /yolo/detected_tubes (PoseArray, frame rx150/base_link)
-            /yolo/tube_classes   (String JSON — index song song)
-  - Motion: MoveIt Action 'move_action' (JointConstraint goal) → fuzzy/hac bridge
-  - Gripper: gripper_trajectory_bridge (stall-aware) | PWM fallback
-  - IK:     SDK bot.arm execute=False (oracle only — KHÔNG publish commands)
+  /yolo/detected_tubes (PoseArray)  /yolo/tube_classes (String JSON)
+  ~/status (String JSON)            /tube_rack/run (Trigger — chạy 1 chu kỳ)
+  ~/stop | ~/reset | ~/home | ~/open_gripper (Trigger)
 
-Yêu cầu T1:
-  ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
-      use_camera:=true use_camera_static_tf:=false
-  (hoặc rx150_hac_controller hac_moveit.launch.py ...)
+Chu kỳ: SCAN → (mỗi ống) PLANNING → APPROACH → DESCEND → GRASP(+verify) → LIFT
+→ TRANSPORT → INSERT → RELEASE → RETRACT → … → HOME + báo cáo.
 
-Chạy:
-  ros2 launch rx150_pick_place tube_rack.launch.py
-  ros2 launch rx150_pick_place tube_rack.launch.py dry_run:=true
-  ros2 launch rx150_pick_place tube_rack.launch.py auto_start:=false
-  (trigger tay:  ros2 service call /tube_rack/run std_srvs/srv/Trigger)
+HÌNH HỌC GIÁ (đọc kỹ trước khi chỉnh config):
+  slot0_x/y/z   toạ độ MIỆNG LỖ slot đầu tiên trong frame rx150/base_link
+  rack_yaw_deg  hướng của HÀNG slot trong mặt phẳng XY (0° = dọc trục +x)
+  rack_tilt_deg độ nghiêng của TRỤC LỖ so với phương THẲNG ĐỨNG
+                (0° = lỗ dựng đứng; giá nghiêng 62° so với mặt bàn ⇒ 28°)
+  slot_dz       chênh cao giữa 2 slot liên tiếp (giá bậc thang), 0 nếu ngang bằng
+
+  Bản cũ chỉ có `rack_angle_deg` và dùng nó làm GÓC XY (sx += k·spacing·cos,
+  sy += k·spacing·sin) trong khi tài liệu lại gọi là "góc nghiêng của giá" —
+  hai thứ khác hẳn nhau. Ở đây tách hẳn ra, và pitch lúc cắm được suy từ
+  rack_tilt_deg chứ không phải một ladder đặt tay rời rạc.
+
+  Node LUÔN kiểm tra mọi slot có với tới được không NGAY LÚC KHỞI ĐỘNG và in
+  bảng — thay vì tới ống thứ 3 mới phát hiện slot nằm ngoài tầm.
+
+Yêu cầu T1: ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py use_camera:=true
+Chạy:       ros2 launch rx150_pick_place tube_rack.launch.py [dry_run:=true] [auto_start:=false]
 """
 import json
 import math
 import threading
-import time
-from collections import deque
 
 import rclpy
-from rclpy.node import Node
-from rclpy.action import ActionClient
-from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
-
-from geometry_msgs.msg import PoseArray, Pose
-from std_msgs.msg import String
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 from std_srvs.srv import Trigger
-from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import Constraints, JointConstraint, CollisionObject, PlanningScene
-from moveit_msgs.srv import ApplyPlanningScene
-from shape_msgs.msg import SolidPrimitive
 
-from interbotix_common_modules.common_robot.robot import (
-    create_interbotix_global_node, robot_shutdown, robot_startup,
-)
-from interbotix_xs_modules.xs_robot.arm import InterbotixManipulatorXS
 from interbotix_xs_msgs.msg import JointSingleCommand
+from interbotix_xs_msgs.srv import OperatingModes
 
-# ─── constants ───────────────────────────────────────────────────────────────
-ROBOT_MODEL = 'rx150'
-ROBOT_NAME = ROBOT_MODEL
-ARM_GROUP = 'interbotix_arm'
-GRIPPER_GROUP = 'interbotix_gripper'
-ARM_JOINTS = ['waist', 'shoulder', 'elbow', 'wrist_angle', 'wrist_rotate']
-FINGER_JOINT = 'left_finger'
+from rx150_pick_place.params import build_stack, declare_common, read_common, table_object
+from rx150_pick_place.status import State
 
-GRASP_FINGER = 0.015     # m — đóng (kẹp vật)
-RELEASE_FINGER = 0.037   # m — mở hết
-GRIP_PWM = 200.0
-OPEN_PWM = -200.0
-OK_CODES = (1, -4)       # 1=SUCCESS, -4=CONTROL_FAILED (bridge tolerance)
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Detection buffer — median ~5 frames cho mỗi ống (chống nhiễu 1 frame)
-# ═══════════════════════════════════════════════════════════════════════════
-class _DetectionBuffer:
-    """Thread-safe buffer thu thập nhiều frame (PoseArray + classes) rồi tính median."""
-
-    def __init__(self):
-        self._lock = threading.Lock()
-        self._poses = []
-        self._classes = []
-
-    def update_poses(self, poses):
-        with self._lock:
-            self._poses = list(poses)
-            self._try_sync()
-
-    def update_classes(self, classes_list):
-        with self._lock:
-            self._classes = list(classes_list)
-            self._try_sync()
-
-    def _try_sync(self):
-        pass  # sync kiểm tra ở snapshot()
-
-    def snapshot_once(self):
-        """Trả list[dict] từ frame hiện tại (poses + classes cùng length)."""
-        with self._lock:
-            if len(self._poses) == 0 or len(self._classes) != len(self._poses):
-                return None
-            tubes = []
-            for p, cls in zip(self._poses, self._classes):
-                qz = p.orientation.z
-                qw = p.orientation.w
-                yaw = 2.0 * math.atan2(qz, qw)
-                tubes.append({
-                    'class': str(cls).lower(),
-                    'x': float(p.position.x),
-                    'y': float(p.position.y),
-                    'z': float(p.position.z),
-                    'yaw': float(yaw),
-                })
-            return tubes
+NODE_DEFAULTS = {
+    # ---- vận hành ----
+    'auto_start': True,
+    'fake_tubes': '[]',            # JSON để thử IK không cần camera
+    'pick_order': 'nearest_first',  # nearest_first | farthest_first | detection
+    'max_consecutive_failures': 2,
+    # ---- hình học giá ----
+    'slot0_x': 0.24,
+    'slot0_y': -0.01,
+    'slot0_z': 0.10,
+    'rack_yaw_deg': 0.0,
+    'rack_tilt_deg': 0.0,
+    'slot_spacing': 0.05,
+    'slot_dz': 0.0,
+    'num_slots': 4,
+    'rack_filter_xy_m': 0.05,
+    'insert_depth': 0.03,
+    'hover_clearance': 0.04,
+    'tube_length': 0.10,
+    # ---- màu → slot ----
+    'color_slot_map.pink': [0],
+    'color_slot_map.blue': [1],
+    'color_slot_map.green': [2],
+    'color_slot_map.yellow': [3],
+    # ---- vật cản giá ----
+    'add_rack_collision': True,
+    'rack_box_x': 0.30,
+    'rack_box_y': -0.01,
+    'rack_box_z': 0.10,
+    'rack_box_size_x': 0.15,
+    'rack_box_size_y': 0.10,
+    'rack_box_size_z': 0.20,
+    # ---- phần cứng ----
+    'commands_topic': '/rx150/commands/joint_single',
+    'operating_modes_service': '/rx150/set_operating_modes',
+    'set_gripper_pwm_mode': True,
+}
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# Main node
-# ═══════════════════════════════════════════════════════════════════════════
 class TubeRackNode(Node):
-    def __init__(self, bot):
+    def __init__(self):
         super().__init__('tube_rack')
-        self.bot = bot
+        declare_common(self, NODE_DEFAULTS)
+        # tube_rack gắp ống dài nên mặc định object_length khác — chỉ đổi khi
+        # người dùng không tự đặt.
+        self.cfg = read_common(self)
+        for name in NODE_DEFAULTS:
+            setattr(self.cfg, name, self.get_parameter(name).value)
+        self.cfg.object_length = float(self.cfg.tube_length)
+
         self._cb = ReentrantCallbackGroup()
+        self._cmd_pub = self.create_publisher(JointSingleCommand,
+                                              self.cfg.commands_topic, 10)
+        self.stack = build_stack(self, self.cfg, callback_group=self._cb,
+                                 status_topic='~/status', publisher=self._cmd_pub)
+        self.skill = self.stack.skill
+        self.status = self.stack.status
 
-        # ── params ──────────────────────────────────────────────────────
-        self.declare_parameter('home_joints', [0.0, 0.0, 0.0, 0.0, 0.0])
-        self.declare_parameter('detection_wait_s', 10.0)
-        self.declare_parameter('auto_start', True)
-        self.declare_parameter('dry_run', False)
-        self.declare_parameter('fake_tubes', '[]')
-        self.declare_parameter('approach_delta', 0.08)
-        self.declare_parameter('tube_length', 0.10)
-        self.declare_parameter('insert_depth', 0.03)
-        self.declare_parameter('velocity_scale_cruise', 0.3)
-        self.declare_parameter('velocity_scale_descend', 0.12)
-        self.declare_parameter('velocity_scale_insert', 0.1)
-        self.declare_parameter('velocity_scale_lift', 0.2)
-        self.declare_parameter('grasp_pitch_ladder', [1.5708, 1.40, 1.25, 1.10, 0.95])
-        self.declare_parameter('place_pitch_ladder', [0.0, 0.15, 0.3])
-        self.declare_parameter('detection_topic', '/yolo/detected_tubes')
-        self.declare_parameter('classes_topic', '/yolo/tube_classes')
-        self.declare_parameter('use_gripper_bridge', True)
-        self.declare_parameter('median_frames', 5)
-        self.declare_parameter('median_collect_s', 1.0)
-        self.declare_parameter('rack_filter_xy_m', 0.05)
-        # Rack geometry
-        self.declare_parameter('slot0_x', 0.24)
-        self.declare_parameter('slot0_y', -0.01)
-        self.declare_parameter('slot0_z', 0.10)
-        self.declare_parameter('rack_angle_deg', 62.0)
-        self.declare_parameter('slot_spacing', 0.12)
-        self.declare_parameter('num_slots', 4)
-        # Colour → slot priority
-        self.declare_parameter('color_slot_map.pink', [0])
-        self.declare_parameter('color_slot_map.blue', [1])
-        self.declare_parameter('color_slot_map.green', [2])
-        self.declare_parameter('color_slot_map.yellow', [3])
-        # Collision box for rack
-        self.declare_parameter('add_rack_collision', True)
-        self.declare_parameter('rack_box_x', 0.30)
-        self.declare_parameter('rack_box_y', -0.01)
-        self.declare_parameter('rack_box_z', 0.10)
-        self.declare_parameter('rack_box_size_x', 0.15)
-        self.declare_parameter('rack_box_size_y', 0.10)
-        self.declare_parameter('rack_box_size_z', 0.20)
-        # Collision box for table
-        self.declare_parameter('add_table_collision', True)
-        self.declare_parameter('table_x', 0.30)
-        self.declare_parameter('table_y', 0.0)
-        self.declare_parameter('table_z', -0.05)
-        self.declare_parameter('table_size_x', 0.80)
-        self.declare_parameter('table_size_y', 0.80)
-        self.declare_parameter('table_size_z', 0.10)
+        self.slots = self._compute_slots()
+        self._slot_occupied = {}
+        self._scene_ready = False
 
-        # ── state ───────────────────────────────────────────────────────
-        self._det = _DetectionBuffer()
-        self._busy = False
-        self._lock = threading.Lock()
-        self._scene_done = False
-        self._slot_occupied = {}  # slot_index → bool
-
-        # ── MoveGroup action client ─────────────────────────────────────
-        self._move = ActionClient(self, MoveGroup, 'move_action', callback_group=self._cb)
-        self._apply_scene = self.create_client(
-            ApplyPlanningScene, '/apply_planning_scene', callback_group=self._cb)
-
-        # ── subscriptions ───────────────────────────────────────────────
-        self.create_subscription(
-            PoseArray, self.get_parameter('detection_topic').value,
-            self._poses_cb, 10, callback_group=self._cb)
-        self.create_subscription(
-            String, self.get_parameter('classes_topic').value,
-            self._classes_cb, 10, callback_group=self._cb)
-
-        # ── service: trigger manual run ─────────────────────────────────
-        self.create_service(Trigger, '/tube_rack/run', self._run_srv_cb,
+        self.create_service(Trigger, '/tube_rack/run', self._srv_run,
                             callback_group=self._cb)
+        for name, handler in (('~/stop', self._srv_stop), ('~/reset', self._srv_reset),
+                              ('~/home', self._srv_home), ('~/open_gripper', self._srv_open)):
+            self.create_service(Trigger, name, handler, callback_group=self._cb)
 
-        # ── status publisher ────────────────────────────────────────────
-        self._status_pub = self.create_publisher(String, '/tube_rack/status', 10)
-
-        # ── worker thread ───────────────────────────────────────────────
         self._run_event = threading.Event()
+        self._busy_lock = threading.Lock()
+        self._busy = False
         self._worker = threading.Thread(target=self._worker_loop, daemon=True)
         self._worker.start()
 
-        if self.get_parameter('auto_start').value:
-            self.get_logger().info('auto_start=true → bắt đầu chu kỳ gắp ống ngay.')
-            self._run_event.set()
-        else:
-            self.get_logger().info(
-                'auto_start=false → chờ service /tube_rack/run để bắt đầu.')
-        self.get_logger().info(
-            f'tube_rack_node sẵn sàng '
-            f'(dry_run={self.get_parameter("dry_run").value}).')
+        self._setup_gripper_mode()
+        self.status.set(State.IDLE, 'chờ /tube_rack/run')
 
-    # ── callbacks ───────────────────────────────────────────────────────
-    def _poses_cb(self, msg: PoseArray):
-        self._det.update_poses(msg.poses)
+    # ── phần cứng ───────────────────────────────────────────────────────
+    def _setup_gripper_mode(self):
+        if not self.cfg.set_gripper_pwm_mode or self.cfg.dry_run:
+            return
+        client = self.create_client(OperatingModes, self.cfg.operating_modes_service,
+                                    callback_group=self._cb)
+        if not client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().warn(
+                f'{self.cfg.operating_modes_service} chưa sẵn sàng — gripper có thể '
+                'không ở PWM mode (xs_sdk chưa chạy?).')
+            return
+        client.call_async(OperatingModes.Request(cmd_type='single', name='gripper',
+                                                 mode='pwm'))
 
-    def _classes_cb(self, msg: String):
+    # ── hình học giá ────────────────────────────────────────────────────
+    def _compute_slots(self):
+        """[(x, y, z_miệng_lỗ)] cho từng slot, từ slot0 + hướng hàng + bậc cao."""
+        yaw = math.radians(float(self.cfg.rack_yaw_deg))
+        spacing = float(self.cfg.slot_spacing)
+        dz = float(self.cfg.slot_dz)
+        return [(self.cfg.slot0_x + k * spacing * math.cos(yaw),
+                 self.cfg.slot0_y + k * spacing * math.sin(yaw),
+                 self.cfg.slot0_z + k * dz)
+                for k in range(int(self.cfg.num_slots))]
+
+    def _slot_axis(self, sx, sy):
+        """Vector đơn vị dọc TRỤC LỖ (hướng lên) + pitch cần cho ee.
+
+        Trục lỗ nghiêng rack_tilt_deg so với phương thẳng đứng, ngả ra xa gốc
+        (theo phương bán kính của slot). Ống kẹp nằm dọc trục ee_z ⇒ pitch của
+        ee đúng bằng góc nghiêng đó.
+        """
+        tilt = math.radians(float(self.cfg.rack_tilt_deg))
+        azimuth = math.atan2(sy, sx)
+        axis = (math.sin(tilt) * math.cos(azimuth),
+                math.sin(tilt) * math.sin(azimuth),
+                math.cos(tilt))
+        return axis, tilt
+
+    def _insert_pose(self, slot_index, depth=None):
+        """Vị trí ee_gripper_link khi ống đã cắm sâu `insert_depth` vào slot.
+
+        Ống được kẹp ở GIỮA thân ⇒ đáy ống cách ee một đoạn tube_length/2 dọc
+        trục ống. Muốn đáy ống nằm dưới miệng lỗ `insert_depth`:
+            p_ee = p_miệng_lỗ + trục · (tube_length/2 − insert_depth)
+        """
+        sx, sy, sz = self.slots[slot_index]
+        axis, tilt = self._slot_axis(sx, sy)
+        depth = self.cfg.insert_depth if depth is None else float(depth)
+        along = float(self.cfg.tube_length) / 2.0 - depth
+        return (sx + axis[0] * along, sy + axis[1] * along, sz + axis[2] * along), tilt
+
+    def _place_ladder(self, tilt):
+        """Ladder pitch quanh góc nghiêng của lỗ (không phải quanh 0)."""
+        override = list(self.cfg.place_pitch_ladder or [])
+        if override and abs(float(self.cfg.rack_tilt_deg)) < 1e-6:
+            return override            # giá dựng đứng: tôn trọng ladder trong YAML
+        return [tilt, tilt + 0.15, tilt - 0.15, tilt + 0.30]
+
+    def check_rack_reachable(self):
+        """In bảng slot với/không với tới — chạy lúc khởi động, KHÔNG di chuyển."""
+        kin = self.stack.kin
+        lines, unreachable = [], 0
+        for i, (sx, sy, sz) in enumerate(self.slots):
+            (ix, iy, iz), tilt = self._insert_pose(i)
+            hover_z = iz + float(self.cfg.hover_clearance)
+            ok_insert = bool(kin.ik_all(ix, iy, iz, tilt))
+            ok_hover = bool(kin.ik_all(ix, iy, hover_z, tilt))
+            mark = 'OK ' if (ok_insert and ok_hover) else 'HỎNG'
+            if not (ok_insert and ok_hover):
+                unreachable += 1
+            lines.append(
+                f'  slot {i}: miệng ({sx:+.3f},{sy:+.3f},{sz:.3f}) r={math.hypot(sx, sy):.3f}m '
+                f'→ ee cắm ({ix:+.3f},{iy:+.3f},{iz:.3f}) pitch={math.degrees(tilt):.0f}° '
+                f'[{mark}]' + ('' if ok_insert else
+                               f'  ← {kin.reach_report(ix, iy, iz, tilt)}'))
+        self.get_logger().info('Hình học giá (tầm với rx150 ≈ '
+                               f'{kin.max_reach:.3f}m):\n' + '\n'.join(lines))
+        if unreachable:
+            self.get_logger().error(
+                f'{unreachable}/{len(self.slots)} slot NGOÀI TẦM — sửa slot0_*/'
+                'slot_spacing/rack_yaw_deg trong tube_rack_params.yaml trước khi chạy.')
+        return unreachable == 0
+
+    # ── chọn slot ───────────────────────────────────────────────────────
+    def _preferred_slots(self, color):
         try:
-            self._det.update_classes(json.loads(msg.data))
-        except Exception:
+            values = self.get_parameter(f'color_slot_map.{color}').value
+            if values:
+                return [int(v) for v in values]
+        except Exception:                      # noqa: BLE001 — màu không có mapping
             pass
+        return list(range(int(self.cfg.num_slots)))
 
-    def _run_srv_cb(self, request, response):
-        with self._lock:
+    def _choose_slot(self, color):
+        for index in self._preferred_slots(color):
+            if index < len(self.slots) and not self._slot_occupied.get(index):
+                return index
+        for index in range(len(self.slots)):
+            if not self._slot_occupied.get(index):
+                return index
+        return None
+
+    def _mark_occupied_from_detections(self, tubes):
+        """Ống đã nằm trong vùng 1 slot ⇒ slot đó coi như đã đầy (và không gắp lại).
+
+        Bản cũ chỉ LOẠI ống đó khỏi danh sách gắp nhưng vẫn coi slot là trống →
+        ống tiếp theo được cắm chồng lên chính chỗ đã có ống.
+        """
+        radius = float(self.cfg.rack_filter_xy_m)
+        remaining = []
+        for tube in tubes:
+            slot = None
+            for i, (sx, sy, _sz) in enumerate(self.slots):
+                if math.hypot(tube['x'] - sx, tube['y'] - sy) < radius:
+                    slot = i
+                    break
+            if slot is None:
+                remaining.append(tube)
+            else:
+                self._slot_occupied[slot] = True
+                self.get_logger().info(
+                    f'Slot {slot} đã có ống {tube["cls"]} — bỏ qua, đánh dấu đã đầy.')
+        return remaining
+
+    # ── services ────────────────────────────────────────────────────────
+    def _srv_run(self, _request, response):
+        if self.stack.executor.aborted:
+            response.success, response.message = False, 'Đang STOP — gọi ~/reset trước.'
+            return response
+        with self._busy_lock:
             if self._busy:
-                response.success = False
-                response.message = 'Đang bận — vui lòng chờ chu kỳ hiện tại kết thúc.'
+                response.success, response.message = False, 'Đang chạy chu kỳ khác.'
                 return response
         self._run_event.set()
-        response.success = True
-        response.message = 'Chu kỳ gắp ống mới đã được kích hoạt.'
+        response.success, response.message = True, 'Đã kích hoạt chu kỳ.'
         return response
 
-    # ── status ──────────────────────────────────────────────────────────
-    def _publish_status(self, step, extra=None):
-        data = {
-            'step': step,
-            'slot_occupied': {str(k): v for k, v in self._slot_occupied.items()},
-        }
-        if extra:
-            data.update(extra)
-        msg = String()
-        msg.data = json.dumps(data)
-        self._status_pub.publish(msg)
+    def _srv_stop(self, _request, response):
+        self.stack.executor.request_abort()
+        self.status.set(State.ESTOP, 'người vận hành yêu cầu dừng')
+        response.success, response.message = True, 'Đã dừng. ~/reset để chạy lại.'
+        return response
+
+    def _srv_reset(self, _request, response):
+        self.stack.executor.clear_abort()
+        with self._busy_lock:
+            self._busy = False
+        self.status.set(State.IDLE, 'đã reset')
+        response.success, response.message = True, 'Sẵn sàng.'
+        return response
+
+    def _srv_home(self, _request, response):
+        response.success = self.skill.go_home()
+        response.message = 'Đã về home.' if response.success else 'Về home thất bại.'
+        return response
+
+    def _srv_open(self, _request, response):
+        response.success = self.stack.gripper.open()
+        response.message = 'Đã mở gripper.'
+        return response
 
     # ── worker ──────────────────────────────────────────────────────────
     def _worker_loop(self):
         while rclpy.ok():
-            self._run_event.wait()
+            self._run_event.wait(timeout=1.0)
+            if not self._run_event.is_set():
+                self.status.publish()
+                continue
             self._run_event.clear()
-            with self._lock:
+            with self._busy_lock:
                 self._busy = True
             try:
                 self._run_cycle()
-            except Exception as exc:
-                self.get_logger().error(f'Chu kỳ thất bại: {exc}')
+            except Exception as exc:            # noqa: BLE001
                 import traceback
                 self.get_logger().error(traceback.format_exc())
+                self.status.fault(f'exception: {exc}')
+                self.skill.recover('exception')
             finally:
-                with self._lock:
+                with self._busy_lock:
                     self._busy = False
 
-    # ═════════════════════════════════════════════════════════════════════
-    #  RACK GEOMETRY
-    # ═════════════════════════════════════════════════════════════════════
-    def _compute_slots(self):
-        """Tính tọa độ từng slot trên giá nghiêng từ tham số."""
-        s0x = self.get_parameter('slot0_x').value
-        s0y = self.get_parameter('slot0_y').value
-        s0z = self.get_parameter('slot0_z').value
-        angle = math.radians(self.get_parameter('rack_angle_deg').value)
-        spacing = self.get_parameter('slot_spacing').value
-        n = int(self.get_parameter('num_slots').value)
-
-        slots = []
-        for k in range(n):
-            sx = s0x + k * spacing * math.cos(angle)
-            sy = s0y + k * spacing * math.sin(angle)
-            # giá nghiêng: slot sau cao hơn
-            sz = s0z
-            slots.append((sx, sy, sz))
-        return slots
-
-    def _color_to_preferred_slots(self, color):
-        """Trả list slot index ưu tiên cho màu, fallback tới mọi slot."""
-        param_name = f'color_slot_map.{color}'
-        try:
-            vals = self.get_parameter(param_name).value
-            if vals:
-                return [int(v) for v in vals]
-        except Exception:
-            pass
-        # unknown / không có mapping → mọi slot
-        n = int(self.get_parameter('num_slots').value)
-        return list(range(n))
-
-    def _choose_slot(self, color):
-        """Chọn slot trống đầu tiên theo ưu tiên màu. Trả index hoặc None."""
-        preferred = self._color_to_preferred_slots(color)
-        n = int(self.get_parameter('num_slots').value)
-        # thử slot ưu tiên trước
-        for si in preferred:
-            if si < n and not self._slot_occupied.get(si, False):
-                return si
-        # fallback: bất kỳ slot trống
-        for si in range(n):
-            if not self._slot_occupied.get(si, False):
-                return si
-        return None
-
-    # ═════════════════════════════════════════════════════════════════════
-    #  MEDIAN SNAPSHOT (chống nhiễu 1 frame)
-    # ═════════════════════════════════════════════════════════════════════
-    def _collect_median_snapshot(self):
-        """Thu thập nhiều frame, tính median (x,y,z,yaw) cho từng ống."""
-        n_frames = int(self.get_parameter('median_frames').value)
-        collect_s = float(self.get_parameter('median_collect_s').value)
-        dt = collect_s / max(n_frames, 1)
-
-        frames = []
-        for _ in range(n_frames):
-            snap = self._det.snapshot_once()
-            if snap:
-                frames.append(snap)
-            time.sleep(dt)
-
-        if not frames:
-            return []
-
-        # lấy frame cuối cùng làm tham chiếu số lượng ống + class
-        ref = frames[-1]
-        n_tubes = len(ref)
-        if n_tubes == 0:
-            return []
-
-        # median cho mỗi ống
-        result = []
-        for ti in range(n_tubes):
-            xs, ys, zs, yaws = [], [], [], []
-            for frame in frames:
-                if ti < len(frame):
-                    xs.append(frame[ti]['x'])
-                    ys.append(frame[ti]['y'])
-                    zs.append(frame[ti]['z'])
-                    yaws.append(frame[ti]['yaw'])
-            if not xs:
-                continue
-            xs.sort(); ys.sort(); zs.sort(); yaws.sort()
-            mid = len(xs) // 2
-            result.append({
-                'class': ref[ti]['class'],
-                'x': xs[mid], 'y': ys[mid], 'z': zs[mid], 'yaw': yaws[mid],
-            })
-        return result
-
-    # ═════════════════════════════════════════════════════════════════════
-    #  MoveGroup primitive (tái sử dụng từ pick_place_moveit_node)
-    # ═════════════════════════════════════════════════════════════════════
-    def _wait_future(self, future, timeout=60.0):
-        t0 = time.monotonic()
-        while not future.done() and rclpy.ok():
-            if time.monotonic() - t0 > timeout:
-                self.get_logger().error(f'Future timeout sau {timeout:.0f}s.')
-                return False
-            time.sleep(0.01)
-        return future.done()
-
-    def move_to_joint_target(self, group_name, joint_names, targets, velocity_scale,
-                             allowed_time=8.0):
-        """Gửi MoveGroup goal (JointConstraint) → plan+execute qua move_group.
-        Trả True nếu error_code ∈ OK_CODES."""
-        if self.get_parameter('dry_run').value:
-            self.get_logger().info(
-                f'[DRY-RUN] move_to_joint_target({group_name}) → '
-                f'{[f"{t:.3f}" for t in targets]}  v={velocity_scale}')
-            return True
-
-        if not self._move.wait_for_server(timeout_sec=5.0):
-            self.get_logger().error('move_action server chưa sẵn sàng.')
-            return False
-
-        goal = MoveGroup.Goal()
-        req = goal.request
-        req.group_name = group_name
-        req.start_state.is_diff = True
-        req.workspace_parameters.header.frame_id = f'{ROBOT_NAME}/base_link'
-        req.workspace_parameters.min_corner.x = -1.0
-        req.workspace_parameters.min_corner.y = -1.0
-        req.workspace_parameters.min_corner.z = -1.0
-        req.workspace_parameters.max_corner.x = 1.0
-        req.workspace_parameters.max_corner.y = 1.0
-        req.workspace_parameters.max_corner.z = 1.0
-        req.allowed_planning_time = float(allowed_time)
-        req.num_planning_attempts = 5
-        req.max_velocity_scaling_factor = float(velocity_scale)
-        req.max_acceleration_scaling_factor = float(velocity_scale)
-
-        c = Constraints()
-        for jn, tgt in zip(joint_names, targets):
-            jc = JointConstraint()
-            jc.joint_name = jn
-            jc.position = float(tgt)
-            jc.tolerance_above = 0.01
-            jc.tolerance_below = 0.01
-            jc.weight = 1.0
-            c.joint_constraints.append(jc)
-        req.goal_constraints.append(c)
-
-        goal_future = self._move.send_goal_async(goal)
-        if not self._wait_future(goal_future):
-            return False
-        handle = goal_future.result()
-        if handle is None or not handle.accepted:
-            self.get_logger().error(f'MoveIt reject goal ({group_name}).')
-            return False
-
-        res_future = handle.get_result_async()
-        if not self._wait_future(res_future, timeout=allowed_time + 15.0):
-            return False
-        res = res_future.result()
-        code = res.result.error_code.val
-        if code not in OK_CODES:
-            self.get_logger().error(f'MoveIt fail ({group_name}) error_code={code}.')
-            return False
-        return True
-
-    # ── IK oracle ───────────────────────────────────────────────────────
-    def _ik(self, x, y, z, pitch):
-        joints, ok = self.bot.arm.set_ee_pose_components(
-            x=float(x), y=float(y), z=float(z), pitch=float(pitch), execute=False)
-        if not ok:
-            self.get_logger().warn(f'IK fail x={x:.3f} y={y:.3f} z={z:.3f} pitch={pitch:.3f}.')
-        return joints, ok
-
-    def _solve_ik_ladder(self, x, y, z, pitch_ladder):
-        """Thử IK từ pitch ưu tiên → relaxed. Trả (joints, ok, pitch_used)."""
-        for p in pitch_ladder:
-            joints, ok = self._ik(x, y, z, p)
-            if ok:
-                return joints, True, p
-        return None, False, pitch_ladder[0]
-
-    # ── gripper ─────────────────────────────────────────────────────────
-    def _gripper(self, grasp: bool):
-        if self.get_parameter('dry_run').value:
-            self.get_logger().info(f'[DRY-RUN] gripper → {"GRASP" if grasp else "OPEN"}')
-            return True
-
-        if self.get_parameter('use_gripper_bridge').value:
-            tgt = GRASP_FINGER if grasp else RELEASE_FINGER
-            return self.move_to_joint_target(
-                GRIPPER_GROUP, [FINGER_JOINT], [tgt], 0.2, allowed_time=4.0)
-
-        cmd = JointSingleCommand(
-            name='gripper', cmd=float(GRIP_PWM if grasp else OPEN_PWM))
-        self.bot.core.pub_single.publish(cmd)
-        time.sleep(2.0)
-        return True
-
-    # ── home ────────────────────────────────────────────────────────────
-    def _go_home(self):
-        home = list(self.get_parameter('home_joints').value)
-        return self.move_to_joint_target(
-            ARM_GROUP, ARM_JOINTS, home,
-            self.get_parameter('velocity_scale_cruise').value)
-
-    # ── abort ───────────────────────────────────────────────────────────
-    def _abort(self, reason=''):
-        self.get_logger().warn(f'ABORT — mở gripper & về home. {reason}')
-        self._gripper(grasp=False)
-        self._go_home()
-        return False
-
-    # ── planning scene ──────────────────────────────────────────────────
     def _ensure_scene(self):
-        if self._scene_done:
+        if self._scene_ready:
             return
-
         objects = []
+        if self.cfg.add_table_collision:
+            objects.append(table_object(self.stack.scene, self.cfg))
+        if self.cfg.add_rack_collision:
+            objects.append(self.stack.scene.add_box(
+                'rack',
+                (self.cfg.rack_box_x, self.cfg.rack_box_y, self.cfg.rack_box_z),
+                (self.cfg.rack_box_size_x, self.cfg.rack_box_size_y,
+                 self.cfg.rack_box_size_z)))
+        if objects:
+            self.stack.scene.apply(objects, label='vật cản tĩnh')
+        self._scene_ready = True
 
-        # Table collision box
-        if self.get_parameter('add_table_collision').value:
-            box = SolidPrimitive()
-            box.type = SolidPrimitive.BOX
-            box.dim = [
-                float(self.get_parameter('table_size_x').value),
-                float(self.get_parameter('table_size_y').value),
-                float(self.get_parameter('table_size_z').value)]
-            pose = Pose()
-            pose.position.x = float(self.get_parameter('table_x').value)
-            pose.position.y = float(self.get_parameter('table_y').value)
-            pose.position.z = float(self.get_parameter('table_z').value)
-            pose.orientation.w = 1.0
-            co = CollisionObject()
-            co.header.frame_id = 'world'
-            co.id = 'table'
-            co.operation = CollisionObject.ADD
-            co.primitives = [box]
-            co.primitive_poses = [pose]
-            objects.append(co)
-
-        # Rack collision box
-        if self.get_parameter('add_rack_collision').value:
-            box_r = SolidPrimitive()
-            box_r.type = SolidPrimitive.BOX
-            box_r.dim = [
-                float(self.get_parameter('rack_box_size_x').value),
-                float(self.get_parameter('rack_box_size_y').value),
-                float(self.get_parameter('rack_box_size_z').value)]
-            pose_r = Pose()
-            pose_r.position.x = float(self.get_parameter('rack_box_x').value)
-            pose_r.position.y = float(self.get_parameter('rack_box_y').value)
-            pose_r.position.z = float(self.get_parameter('rack_box_z').value)
-            pose_r.orientation.w = 1.0
-            co_r = CollisionObject()
-            co_r.header.frame_id = 'world'
-            co_r.id = 'rack'
-            co_r.operation = CollisionObject.ADD
-            co_r.primitives = [box_r]
-            co_r.primitive_poses = [pose_r]
-            objects.append(co_r)
-
-        if not objects:
-            self._scene_done = True
-            return
-
-        if not self._apply_scene.wait_for_service(timeout_sec=2.0):
-            self.get_logger().warn(
-                '/apply_planning_scene chưa sẵn sàng — bỏ qua collision boxes.')
-            self._scene_done = True
-            return
-
-        scene = PlanningScene()
-        scene.is_diff = True
-        scene.world.collision_objects = objects
-
-        req = ApplyPlanningScene.Request()
-        req.scene = scene
-        fut = self._apply_scene.call_async(req)
-        self._wait_future(fut, timeout=5.0)
-        self._scene_done = True
-        names = [o.id for o in objects]
-        self.get_logger().info(f'Đã thêm collision boxes: {names}')
-
-    # ═════════════════════════════════════════════════════════════════════
-    #  CHU KỲ CHÍNH: quét → gắp tuần tự → cắm giá
-    # ═════════════════════════════════════════════════════════════════════
+    # ── 1 chu kỳ: quét → gắp lần lượt ───────────────────────────────────
     def _run_cycle(self):
-        self.get_logger().info('═══ BẮT ĐẦU CHU KỲ GẮP ỐNG NGHIỆM → GIÁ ═══')
-        self._publish_status('START')
-
-        # ── chuẩn bị ────────────────────────────────────────────────────
+        self.get_logger().info('═══ BẮT ĐẦU CHU KỲ GẮP ỐNG → GIÁ ═══')
         self._ensure_scene()
-        self._go_home()
-        self._gripper(grasp=False)
-
-        # ── fake_tubes mode ─────────────────────────────────────────────
-        fake_json = self.get_parameter('fake_tubes').value
-        fake_tubes = []
-        if fake_json and fake_json != '[]':
-            try:
-                fake_tubes = json.loads(fake_json)
-            except Exception:
-                self.get_logger().warn('fake_tubes JSON không hợp lệ — bỏ qua.')
-
-        # ── SCAN: thu thập detection ────────────────────────────────────
-        if fake_tubes:
-            tubes = []
-            for ft in fake_tubes:
-                tubes.append({
-                    'class': str(ft.get('class', 'unknown')).lower(),
-                    'x': float(ft['x']), 'y': float(ft['y']),
-                    'z': float(ft['z']), 'yaw': float(ft.get('yaw', 0.0)),
-                })
-            self.get_logger().info(f'Dùng fake_tubes: {len(tubes)} ống.')
-        else:
-            wait_s = float(self.get_parameter('detection_wait_s').value)
-            self.get_logger().info(f'Chờ detection tối đa {wait_s:.0f}s …')
-            t0 = time.monotonic()
-            tubes = []
-            while time.monotonic() - t0 < wait_s:
-                tubes = self._collect_median_snapshot()
-                if tubes:
-                    break
-                time.sleep(0.5)
-
-        if not tubes:
-            self.get_logger().warn('Không phát hiện ống nghiệm nào — kết thúc.')
-            self._publish_status('NO_TUBES')
-            self._go_home()
-            return
-
-        # ── Lọc ống đã nằm trong vùng giá ──────────────────────────────
-        slots = self._compute_slots()
-        filter_r = float(self.get_parameter('rack_filter_xy_m').value)
-        filtered = []
-        for t in tubes:
-            in_rack = False
-            for sx, sy, _sz in slots:
-                dx = t['x'] - sx
-                dy = t['y'] - sy
-                if math.hypot(dx, dy) < filter_r:
-                    in_rack = True
-                    break
-            if not in_rack:
-                filtered.append(t)
-            else:
-                self.get_logger().info(
-                    f'Bỏ qua ống {t["class"]} tại ({t["x"]:.3f},{t["y"]:.3f}) '
-                    f'— nằm trong vùng giá.')
-
-        tubes = filtered
-        self.get_logger().info(f'Số ống cần gắp: {len(tubes)}')
-        for i, t in enumerate(tubes):
-            self.get_logger().info(
-                f'  [{i}] {t["class"]:>8}  x={t["x"]:.3f} y={t["y"]:.3f} '
-                f'z={t["z"]:.3f} yaw={math.degrees(t["yaw"]):.1f}°')
-
-        # ── Reset slot occupancy (scan lại) ─────────────────────────────
         self._slot_occupied = {}
 
-        # ── Gắp từng ống ────────────────────────────────────────────────
-        results = []
-        grasp_ladder = list(self.get_parameter('grasp_pitch_ladder').value)
-        place_ladder = list(self.get_parameter('place_pitch_ladder').value)
-        delta = float(self.get_parameter('approach_delta').value)
-        tube_len = float(self.get_parameter('tube_length').value)
-        insert_depth = float(self.get_parameter('insert_depth').value)
-        v_cruise = float(self.get_parameter('velocity_scale_cruise').value)
-        v_descend = float(self.get_parameter('velocity_scale_descend').value)
-        v_insert = float(self.get_parameter('velocity_scale_insert').value)
-        v_lift = float(self.get_parameter('velocity_scale_lift').value)
+        self.status.set(State.HOMING, 'về home trước khi quét')
+        self.skill.go_home()
+        self.skill.open_gripper()
 
-        for ti, t in enumerate(tubes):
+        self.status.set(State.SCANNING)
+        tubes = self._scan()
+        tubes = self._mark_occupied_from_detections(tubes)
+        if not tubes:
+            self.status.set(State.DONE, 'không còn ống nào cần gắp')
+            self.skill.go_home()
+            return
+        tubes = self._sort_tubes(tubes)
+
+        self.get_logger().info(f'Số ống cần gắp: {len(tubes)}')
+        for i, tube in enumerate(tubes):
             self.get_logger().info(
-                f'\n──── ỐNG [{ti+1}/{len(tubes)}] {t["class"]} '
-                f'({t["x"]:.3f},{t["y"]:.3f},{t["z"]:.3f}) ────')
-            self._publish_status('PICKING', {'tube_index': ti, 'tube_class': t['class']})
+                f'  [{i}] {tube["cls"]:>8} x={tube["x"]:+.3f} y={tube["y"]:+.3f} '
+                f'z={tube["z"]:.3f} yaw={math.degrees(tube["yaw"]):+.0f}° '
+                f'(median {tube.get("frames", "?")} frame)')
 
-            ok = self._pick_and_place_one(
-                t, slots, grasp_ladder, place_ladder,
-                delta, tube_len, insert_depth,
-                v_cruise, v_descend, v_insert, v_lift)
-            results.append({'class': t['class'], 'ok': ok})
-            if not ok:
-                self.get_logger().warn(f'Ống [{ti+1}] thất bại — sang ống kế.')
+        results, consecutive_fail = [], 0
+        for i, tube in enumerate(tubes):
+            if self.stack.executor.aborted:
+                self.get_logger().warn('E-stop — dừng chu kỳ.')
+                break
+            self.get_logger().info(
+                f'──── ỐNG [{i + 1}/{len(tubes)}] {tube["cls"]} ────')
+            self.status.begin_cycle()
+            ok = self._pick_one(tube)
+            self.status.end_cycle(ok)
+            results.append((tube['cls'], ok))
+            if ok:
+                consecutive_fail = 0
+            else:
+                consecutive_fail += 1
+                self.skill.recover(f'ống {tube["cls"]} thất bại')
+                if consecutive_fail >= int(self.cfg.max_consecutive_failures):
+                    self.get_logger().error(
+                        f'{consecutive_fail} ống liên tiếp thất bại — DỪNG chu kỳ để '
+                        'người vận hành kiểm tra (đừng gắp mù tiếp).')
+                    break
 
-        # ── Tổng kết ───────────────────────────────────────────────────
-        n_ok = sum(1 for r in results if r['ok'])
+        n_ok = sum(1 for _, ok in results if ok)
+        self.get_logger().info(f'═══ KẾT THÚC: {n_ok}/{len(results)} ống thành công ═══')
+        for cls, ok in results:
+            self.get_logger().info(f'  {"✓" if ok else "✗"} {cls}')
+        self.status.set(State.DONE, self.status.summary(),
+                        slots={str(k): v for k, v in self._slot_occupied.items()})
+        self.skill.go_home()
+        self.status.set(State.IDLE, 'chờ /tube_rack/run', log=False)
+
+    def _scan(self):
+        fake = str(self.cfg.fake_tubes or '[]')
+        if fake.strip() not in ('', '[]'):
+            try:
+                items = json.loads(fake)
+            except ValueError:
+                self.get_logger().error('fake_tubes không phải JSON hợp lệ.')
+                return []
+            self.get_logger().warn(f'Dùng fake_tubes ({len(items)} ống) — bỏ qua camera.')
+            return [{'cls': str(t.get('class', t.get('cls', 'unknown'))).lower(),
+                     'x': float(t['x']), 'y': float(t['y']), 'z': float(t['z']),
+                     'yaw': float(t.get('yaw', 0.0)), 'frames': 0} for t in items]
         self.get_logger().info(
-            f'═══ KẾT THÚC: {n_ok}/{len(results)} ống thành công ═══')
-        for r in results:
-            mark = '✓' if r['ok'] else '✗'
-            self.get_logger().info(f'  {mark} {r["class"]}')
-        self._publish_status('DONE', {'total': len(results), 'success': n_ok})
-        self._go_home()
+            f'Chờ detection tối đa {float(self.cfg.detection_wait_s):.0f}s …')
+        return self.stack.detection.wait_for_detections(
+            self.cfg.detection_wait_s,
+            frames=self.cfg.median_frames, collect_s=self.cfg.median_collect_s,
+            assoc_radius=self.cfg.detection_assoc_radius_m,
+            min_hits_ratio=self.cfg.detection_min_hits_ratio)
 
-    # ═════════════════════════════════════════════════════════════════════
-    #  GẮP 1 ỐNG → CẮM 1 SLOT
-    # ═════════════════════════════════════════════════════════════════════
-    def _pick_and_place_one(self, tube, slots, grasp_ladder, place_ladder,
-                            delta, tube_len, insert_depth,
-                            v_cruise, v_descend, v_insert, v_lift):
-        tx, ty, tz, yaw = tube['x'], tube['y'], tube['z'], tube['yaw']
-        color = tube['class']
+    def _sort_tubes(self, tubes):
+        """Gắp ống GẦN trước: mỗi lần với ra xa hơn thì phía trong đã trống,
+        tay không phải lia qua đầu ống chưa gắp."""
+        order = str(self.cfg.pick_order)
+        if order == 'detection':
+            return tubes
+        reverse = order == 'farthest_first'
+        return sorted(tubes, key=lambda t: math.hypot(t['x'], t['y']), reverse=reverse)
 
-        # ── Toán gắp (sort_tubes_by_color:305-327) ──────────────────────
-        z_approach = max(tz + delta, 0.12)
-        z_grasp = max(tz, 0.02)
+    # ── gắp 1 ống → cắm 1 slot ──────────────────────────────────────────
+    def _pick_one(self, tube):
+        self.status.set(State.PLANNING, f'{tube["cls"]}')
+        slot = self._choose_slot(tube['cls'])
+        if slot is None:
+            self.get_logger().warn(f'Hết slot trống cho màu {tube["cls"]} — bỏ ống này.')
+            return False
 
-        j_app, ok1, pitch_used = self._solve_ik_ladder(tx, ty, z_approach, grasp_ladder)
-        j_grasp, ok2, _ = self._solve_ik_ladder(tx, ty, z_grasp, [pitch_used] + grasp_ladder)
+        # --- kế hoạch gắp ---
+        grasp = self.skill.plan_grasp(tube['x'], tube['y'], tube['z'], yaw=tube['yaw'])
+        if grasp is None:
+            return False
 
-        if not ok1 or not ok2:
+        # --- kế hoạch cắm (TRƯỚC khi kẹp: hỏng thì chưa cầm gì trong tay) ---
+        (ix, iy, iz), tilt = self._insert_pose(slot)
+        ladder = self._place_ladder(tilt)
+        hover = self.skill.plan_pose(ix, iy, iz + float(self.cfg.hover_clearance),
+                                     ladder, seed=grasp.lift.joints, label='HOVER')
+        insert = None
+        if hover is not None:
+            insert = self.skill.plan_pose(ix, iy, iz, [hover.pitch], wrist=hover.wrist,
+                                          seed=hover.joints, label='INSERT')
+        if insert is None:
             self.get_logger().error(
-                f'IK fail tại ({tx:.3f},{ty:.3f}) — bỏ qua ống.')
-            return self._abort('IK fail GRASP')
-
-        # Wrist rotation: ngón vuông góc trục ống
-        waist_angle = j_grasp[0]
-        wrist_rot = yaw - waist_angle
-        wrist_rot = math.atan2(math.sin(wrist_rot), math.cos(wrist_rot))
-
-        j_app = list(j_app)
-        j_grasp = list(j_grasp)
-        j_app[4] = wrist_rot
-        j_grasp[4] = wrist_rot
-
+                f'Slot {slot} không với tới — bỏ ống này (chưa kẹp nên an toàn). '
+                f'{self.stack.kin.reach_report(ix, iy, iz, tilt)}')
+            return False
         self.get_logger().info(
-            f'  IK ok: pitch={pitch_used:.2f} wrist_rot={math.degrees(wrist_rot):.1f}°')
+            f'  Kế hoạch: {self.skill.describe(grasp.pre, grasp.grasp, grasp.lift, hover, insert)} '
+            f'→ slot {slot}')
 
-        # ── Chọn slot ──────────────────────────────────────────────────
-        slot_idx = self._choose_slot(color)
-        if slot_idx is None:
-            self.get_logger().warn(f'Hết slot trống cho màu {color} — bỏ qua.')
-            return self._abort('Hết slot')
-        sx, sy, sz = slots[slot_idx]
-        self.get_logger().info(f'  → Slot {slot_idx} tại ({sx:.3f},{sy:.3f},{sz:.3f})')
+        # --- chấp hành ---
+        if not self.skill.grasp_at(grasp):
+            return False
+        if not self.skill.release_at(insert, hover=hover, state=State.INSERT):
+            return False
 
-        # ── Tính z_hover / z_insert cho việc đặt ống ────────────────────
-        # Ống kẹp giữa thân → khi pitch=0 (thẳng đứng), đáy ống cách EE = tube_len/2
-        z_hover = sz + tube_len / 2.0 + 0.03   # margin 3cm trên đỉnh slot
-        z_insert_target = z_hover - insert_depth
-
-        # IK cho slot (dùng place_pitch_ladder)
-        j_hover, ok_h, pp_used = self._solve_ik_ladder(sx, sy, z_hover, place_ladder)
-        j_insert, ok_i, _ = self._solve_ik_ladder(
-            sx, sy, z_insert_target, [pp_used] + place_ladder)
-
-        if not ok_h or not ok_i:
-            self.get_logger().warn(
-                f'IK fail tại slot {slot_idx} ({sx:.3f},{sy:.3f}) — bỏ qua.')
-            return self._abort('IK fail PLACE')
-
-        j_hover = list(j_hover)
-        j_insert = list(j_insert)
-        # Giữ wrist_rotate=0 cho place (ống thẳng đứng, không cần xoay)
-        j_hover[4] = 0.0
-        j_insert[4] = 0.0
-
-        self.get_logger().info(
-            f'  Place IK ok: place_pitch={pp_used:.2f} '
-            f'z_hover={z_hover:.3f} z_insert={z_insert_target:.3f}')
-
-        # ── Transport clearance: ống treo dọc dưới EE ──────────────────
-        # Mọi hover phải cao hơn tube_len/2 + 0.03 (để đáy ống không chạm bàn/giá)
-        z_transport_min = tube_len / 2.0 + 0.03
-
-        # ═══ STATE MACHINE ═══════════════════════════════════════════════
-        # 1. APPROACH — di chuyển tới trên ống
-        self.get_logger().info('  [1/9] APPROACH (trên ống)')
-        self._gripper(grasp=False)
-        if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_app, v_cruise):
-            return self._abort('APPROACH fail')
-
-        # 2. DESCEND — hạ xuống vị trí kẹp
-        self.get_logger().info('  [2/9] DESCEND (kẹp)')
-        if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_grasp, v_descend):
-            return self._abort('DESCEND fail')
-
-        # 3. GRASP — kẹp ống
-        self.get_logger().info('  [3/9] GRASP')
-        if not self._gripper(grasp=True):
-            return self._abort('GRASP fail')
-        time.sleep(0.5)  # chờ stall
-
-        # 4. LIFT — nhấc lên approach height
-        self.get_logger().info('  [4/9] LIFT')
-        if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_app, v_lift):
-            return self._abort('LIFT fail')
-
-        # 5. TRANSPORT → PLACE_HOVER — di chuyển tới trên slot
-        self.get_logger().info(f'  [5/9] TRANSPORT → slot {slot_idx}')
-        # IK cho transport: hover trên slot, EE đủ cao cho ống treo dọc
-        z_transport = max(z_hover, z_transport_min + sz)
-        j_trans, ok_t, pp_t = self._solve_ik_ladder(
-            sx, sy, z_transport, place_ladder)
-        if ok_t:
-            j_trans = list(j_trans)
-            j_trans[4] = 0.0
-            if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_trans, v_cruise):
-                return self._abort('TRANSPORT fail')
-        else:
-            # fallback: dùng j_hover trực tiếp
-            if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_hover, v_cruise):
-                return self._abort('TRANSPORT fail')
-
-        # 6. PLACE_HOVER — hạ xuống hover position
-        self.get_logger().info('  [6/9] PLACE_HOVER')
-        if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_hover, v_descend):
-            return self._abort('PLACE_HOVER fail')
-
-        # 7. INSERT — hạ chậm xuống slot
-        self.get_logger().info('  [7/9] INSERT')
-        if not self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_insert, v_insert):
-            return self._abort('INSERT fail')
-
-        # 8. RELEASE — nhả ống
-        self.get_logger().info('  [8/9] RELEASE')
-        if not self._gripper(grasp=False):
-            return self._abort('RELEASE fail')
-        time.sleep(0.3)
-
-        # 9. RÚT + RETREAT — nhấc THẲNG ĐỨNG qua đỉnh ống đã cắm, rồi rút ngang
-        self.get_logger().info('  [9/9] RETRACT (thẳng đứng → ngang → home)')
-        # Nhấc thẳng đứng: z >= slot_top + tube_length + margin
-        z_clear = sz + tube_len + 0.02
-        j_clear, ok_c, _ = self._solve_ik_ladder(sx, sy, z_clear, place_ladder)
-        if ok_c:
-            j_clear = list(j_clear)
-            j_clear[4] = 0.0
-            self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_clear, v_lift)
-
-        # Retreat ngang (lùi về phía base) — chỉ SAU khi đã nhấc qua đỉnh ống
-        norm = math.hypot(sx, sy) or 1.0
-        rx = sx - 0.10 * (sx / norm)
-        ry = sy - 0.10 * (sy / norm)
-        j_retreat, ok_r, _ = self._solve_ik_ladder(rx, ry, z_clear, place_ladder)
-        if ok_r:
-            j_retreat = list(j_retreat)
-            j_retreat[4] = 0.0
-            self.move_to_joint_target(ARM_GROUP, ARM_JOINTS, j_retreat, v_cruise)
-
-        # HOME
-        self._go_home()
-
-        # Đánh dấu slot đã có ống
-        self._slot_occupied[slot_idx] = True
-        self.get_logger().info(
-            f'  ✓ Ống {color} → slot {slot_idx} thành công!')
-        self._publish_status('PLACED', {
-            'tube_class': color, 'slot': slot_idx})
+        self._slot_occupied[slot] = True
+        self.status.set(State.DONE, f'ống {tube["cls"]} → slot {slot}',
+                        slots={str(k): v for k, v in self._slot_occupied.items()})
         return True
 
+    # ── khởi động ───────────────────────────────────────────────────────
+    def startup(self):
+        self.check_rack_reachable()
+        if not self.stack.executor.wait_ready(timeout=15.0):
+            self.status.fault('MoveIt / joint_states chưa sẵn sàng')
+            return
+        self.get_logger().info(
+            f'tube_rack sẵn sàng (dry_run={self.cfg.dry_run}, '
+            f'{len(self.slots)} slot, pick_order={self.cfg.pick_order}).')
+        if self.cfg.auto_start:
+            self.get_logger().info('auto_start=true → chạy chu kỳ ngay.')
+            self._run_event.set()
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  MAIN
-# ═══════════════════════════════════════════════════════════════════════════
+
 def main(args=None):
     rclpy.init(args=args)
-    global_node = create_interbotix_global_node('tube_rack_control')
-    bot = InterbotixManipulatorXS(
-        robot_model=ROBOT_MODEL, robot_name=ROBOT_NAME, node=global_node)
-    robot_startup(global_node)
-
-    # Gripper PWM mode: cần cho fallback; bridge cũng xài PWM effort
-    try:
-        bot.core.robot_set_operating_modes('single', 'gripper', 'pwm')
-    except Exception as exc:
-        rclpy.logging.get_logger('tube_rack').warn(
-            f'Không set gripper pwm: {exc}')
-
-    node = TubeRackNode(bot)
+    node = TubeRackNode()
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
+    spin_thread = threading.Thread(target=executor.spin, daemon=True)
+    spin_thread.start()
     try:
-        executor.spin()
+        node.startup()
+        spin_thread.join()
     except KeyboardInterrupt:
         pass
     finally:
+        node.stack.executor.request_abort()
         node.destroy_node()
-        robot_shutdown(global_node)
         rclpy.try_shutdown()
 
 

@@ -1,0 +1,37 @@
+-- Install configuration: ""
+-- Execute custom install script
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/__init__.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/__pycache__/__init__.cpython-310.pyc
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/__pycache__/kinematics.cpython-310.pyc
+-- Symlinking: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/__pycache__/motion.cpython-310.pyc
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/detection.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/gripper.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/kinematics.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/motion.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/params.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/scene.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/skills.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_pick_place/status.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/pick_place_moveit_node.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/tube_rack_node.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/lib/rx150_pick_place/rx150_reach_check.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/launch/pick_place.launch.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/launch/tube_rack.launch.py
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/config/pick_place_params.yaml
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/config/tube_rack_params.yaml
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/environment/rx150_pick_place_pythonpath.dsv
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/ament_index/resource_index/package_run_dependencies/rx150_pick_place
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/ament_index/resource_index/parent_prefix_path/rx150_pick_place
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/environment/ament_prefix_path.sh
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/environment/ament_prefix_path.dsv
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/environment/path.sh
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/environment/path.dsv
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/local_setup.bash
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/local_setup.sh
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/local_setup.zsh
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/local_setup.dsv
+-- Symlinking: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/package.dsv
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/ament_index/resource_index/packages/rx150_pick_place
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/cmake/rx150_pick_placeConfig.cmake
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/cmake/rx150_pick_placeConfig-version.cmake
+-- Up-to-date symlink: /home/hust/interbotix_ws/src/rx150_pick_place/install/rx150_pick_place/share/rx150_pick_place/package.xml

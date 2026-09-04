@@ -1,0 +1,8 @@
+# CMake generated Testfile for 
+# Source directory: /home/hust/interbotix_ws/src/rx150_pick_place
+# Build directory: /home/hust/interbotix_ws/src/rx150_pick_place/build/rx150_pick_place
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+add_test(test_kinematics "/usr/bin/python3" "-u" "/opt/ros/humble/share/ament_cmake_test/cmake/run_test.py" "/home/hust/interbotix_ws/src/rx150_pick_place/build/rx150_pick_place/test_results/rx150_pick_place/test_kinematics.xunit.xml" "--package-name" "rx150_pick_place" "--output-file" "/home/hust/interbotix_ws/src/rx150_pick_place/build/rx150_pick_place/ament_cmake_pytest/test_kinematics.txt" "--append-env" "PYTHONPATH=/home/hust/interbotix_ws/src/rx150_pick_place" "--command" "/usr/bin/python3" "-u" "-m" "pytest" "/home/hust/interbotix_ws/src/rx150_pick_place/test/test_kinematics.py" "-o" "cache_dir=/home/hust/interbotix_ws/src/rx150_pick_place/build/rx150_pick_place/ament_cmake_pytest/test_kinematics/.cache" "--junit-xml=/home/hust/interbotix_ws/src/rx150_pick_place/build/rx150_pick_place/test_results/rx150_pick_place/test_kinematics.xunit.xml" "--junit-prefix=rx150_pick_place")
+set_tests_properties(test_kinematics PROPERTIES  LABELS "pytest" TIMEOUT "60" WORKING_DIRECTORY "/home/hust/interbotix_ws/src/rx150_pick_place" _BACKTRACE_TRIPLES "/opt/ros/humble/share/ament_cmake_test/cmake/ament_add_test.cmake;125;add_test;/opt/ros/humble/share/ament_cmake_pytest/cmake/ament_add_pytest_test.cmake;169;ament_add_test;/home/hust/interbotix_ws/src/rx150_pick_place/CMakeLists.txt;46;ament_add_pytest_test;/home/hust/interbotix_ws/src/rx150_pick_place/CMakeLists.txt;0;")

@@ -1,78 +1,123 @@
-# Tham số cho tube_rack_node — gắp ống nghiệm → cắm lên giá nghiêng.
-# /** áp dụng cho node nào load file này.
-# TUNE slot0/spacing/rack_angle_deg cho giá thật của bạn.
-# Đo slot0: dùng RViz click / log detection ống cắm sẵn trong giá.
+# Tham số cho tube_rack_node — gắp ống nghiệm trên bàn → cắm lên giá, phân màu.
+#
+# TRƯỚC KHI CHẠY ROBOT (offline, không cần camera/MoveIt):
+#   ros2 run rx150_pick_place rx150_reach_check.py --config <đường dẫn file này>
+# Node cũng tự in bảng "slot nào với tới được" mỗi lần khởi động.
+#
+# ĐỔI TÊN so với bản cũ: rack_angle_deg (bị dùng lẫn lộn vừa là góc nghiêng vừa
+# là hướng hàng slot) → tách thành rack_yaw_deg + rack_tilt_deg.
 /**:
   ros__parameters:
-    # ---- Home ----
+    # ══ hệ thống ════════════════════════════════════════════════════════
+    robot_name: rx150
+    base_frame: rx150/base_link
+    joint_states_topic: /rx150/joint_states
+    dry_run: false              # true = chỉ lập kế hoạch + log, KHÔNG gửi goal
+    auto_start: true            # false = chờ `ros2 service call /tube_rack/run`
+    pick_order: nearest_first   # nearest_first | farthest_first | detection
+    max_consecutive_failures: 2 # hỏng liên tiếp bấy nhiêu ống ⇒ dừng chu kỳ
+
+    # ══ tư thế ══════════════════════════════════════════════════════════
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
-    auto_start: true          # true: chạy ngay khi launch; false: chờ /tube_rack/run
-    dry_run: false            # true: chỉ tính IK + log, không gửi MoveGroup goal
+    grasp_pitch_ladder: [1.5708, 1.40, 1.25, 1.10, 0.95]
+    # Khi rack_tilt_deg = 0 thì ladder này được dùng nguyên; khi giá nghiêng,
+    # node tự dựng ladder quanh góc nghiêng đó.
+    place_pitch_ladder: [0.0, 0.15, 0.30, -0.15]
 
-    # ---- Detection ----
-    detection_topic: /yolo/detected_tubes
-    classes_topic: /yolo/tube_classes
-    detection_wait_s: 10.0    # s — chờ detection tối đa trước khi bỏ cuộc
-    median_frames: 5          # số frame thu thập để tính median (chống nhiễu)
-    median_collect_s: 1.0     # s — thời gian thu thập median frames
+    # ══ HÌNH HỌC GIÁ (đo bằng thước hoặc bằng chính ống đã cắm sẵn) ═════
+    # slot0_*: toạ độ MIỆNG LỖ của slot đầu tiên, frame rx150/base_link.
+    slot0_x: 0.26
+    slot0_y: -0.075
+    slot0_z: 0.10
+    rack_yaw_deg: 90.0          # hướng HÀNG slot trong mặt phẳng XY (90° = dọc +y)
+    rack_tilt_deg: 0.0          # nghiêng TRỤC LỖ so với phương thẳng đứng
+                                # (giá nghiêng 62° so với mặt bàn ⇒ đặt 28.0)
+    slot_spacing: 0.05          # khoảng cách tâm-tâm giữa 2 slot
+    slot_dz: 0.0                # chênh cao mỗi slot (giá bậc thang)
+    num_slots: 4
+    rack_filter_xy_m: 0.05      # ống nằm trong bán kính này quanh 1 slot ⇒ coi
+                                # như ĐÃ cắm: bỏ qua + đánh dấu slot đã đầy
+    tube_length: 0.10           # chiều dài ống nghiệm
+    insert_depth: 0.03          # đáy ống nằm sâu dưới miệng lỗ bao nhiêu
+    hover_clearance: 0.04       # treo cao hơn vị trí cắm bao nhiêu trước khi hạ
 
-    # ---- Fake tubes (dry-run / verify IK không cần camera) ----
-    # JSON list: [{"x":0.20,"y":0.05,"z":0.03,"yaw":0.0,"class":"pink"}, ...]
-    fake_tubes: "[]"
-
-    # ---- Rack geometry (frame rx150/base_link) ----
-    # slot0: tọa độ slot đầu tiên (đo bằng tay hoặc calibrate bằng ống cắm sẵn)
-    slot0_x: 0.24
-    slot0_y: -0.01
-    slot0_z: 0.10             # z đỉnh slot (nơi miệng lỗ cắm)
-    rack_angle_deg: 62.0      # góc nghiêng giá (so với phương ngang)
-    slot_spacing: 0.12        # m — khoảng cách giữa 2 slot (dọc mặt giá)
-    num_slots: 4              # tổng số slot trên giá
-    rack_filter_xy_m: 0.05    # m — bán kính XY loại bỏ ống đã nằm trong vùng giá
-
-    # ---- Color → slot priority ----
-    # Mỗi màu map tới list slot index ưu tiên (slot 0,1,2,3)
-    # Ống unknown hoặc không có mapping → lấy slot trống bất kỳ
+    # ══ màu → slot ưu tiên ══════════════════════════════════════════════
     color_slot_map:
       pink:   [0]
       blue:   [1]
       green:  [2]
       yellow: [3]
 
-    # ---- Grasp geometry ----
-    approach_delta: 0.08      # m — chênh z khi approach (cao trên ống)
-    tube_length: 0.10         # m — chiều dài ống nghiệm
-    insert_depth: 0.03        # m — chiều sâu cắm ống vào lỗ slot
+    # ══ hình học gắp ════════════════════════════════════════════════════
+    approach_delta: 0.07
+    grasp_z_offset: 0.0
+    retract_height: 0.10        # phải cao hơn phần ống nhô lên khỏi miệng lỗ
+    min_ee_z: 0.015
+    object_radius: 0.0085       # bán kính ống (attach vào planning scene)
 
-    # ---- IK pitch ladders ----
-    # grasp: cắm thẳng đứng từ trên xuống (1.5708 = 90°), relaxed dần nếu IK fail
-    grasp_pitch_ladder: [1.5708, 1.40, 1.25, 1.10, 0.95]
-    # place: ống thẳng đứng (0.0 rad), relaxed nếu slot xa
-    place_pitch_ladder: [0.0, 0.15, 0.3]
-
-    # ---- Velocity scales (0..1) ----
+    # ══ tốc độ ══════════════════════════════════════════════════════════
     velocity_scale_cruise: 0.3
-    velocity_scale_descend: 0.12  # hạ xuống kẹp (chậm, an toàn)
-    velocity_scale_insert: 0.1    # cắm ống vào slot (rất chậm)
-    velocity_scale_lift: 0.2      # nhấc lên sau khi kẹp
+    velocity_scale_delicate: 0.1
+    approach_speed_mps: 0.05
+    descend_speed_mps: 0.025
+    insert_speed_mps: 0.015     # cắm ống vào lỗ — chậm nhất
+    retract_speed_mps: 0.04
+    use_linear_moves: true
+    linear_step_m: 0.006
 
-    # ---- Gripper ----
-    use_gripper_bridge: true  # true = MoveIt bridge (stall-aware); false = raw PWM
+    # ══ MoveIt ══════════════════════════════════════════════════════════
+    planning_time_s: 5.0
+    planning_attempts: 5
+    execution_timeout_s: 30.0
+    goal_tolerance_rad: 0.01
+    verify_tolerance_rad: 0.06
+    move_retries: 1
 
-    # ---- Collision: box bàn ----
+    # ══ gripper ═════════════════════════════════════════════════════════
+    use_gripper_bridge: true
+    finger_closed_m: 0.015
+    finger_open_m: 0.037
+    grasp_empty_margin_m: 0.0025
+    grasp_settle_s: 0.4
+    grasp_retries: 1
+    regrasp_z_step: 0.008
+    set_gripper_pwm_mode: true
+
+    # ══ xử lý sự cố ═════════════════════════════════════════════════════
+    reject_x: 0.22
+    reject_y: -0.22
+    reject_z: 0.10
+
+    # ══ nhận diện ═══════════════════════════════════════════════════════
+    detection_topic: /yolo/detected_tubes
+    classes_topic: /yolo/tube_classes
+    detection_wait_s: 10.0
+    detection_max_age_s: 1.5
+    median_frames: 5
+    median_collect_s: 1.3       # /yolo/detected_tubes đo được ~4.3 Hz (0.23 s/frame)
+                                # ⇒ dt = 1.3/5 = 0.26 s để 5 mẫu là 5 frame KHÁC nhau,
+                                # không lấy trùng 1 frame (làm yếu lọc nhấp nháy).
+    detection_assoc_radius_m: 0.03
+    detection_min_hits_ratio: 0.6
+    detection_yaw_offset_deg: 0.0
+    detection_invert_yaw: false
+    fake_tubes: "[]"            # ví dụ: '[{"x":0.22,"y":0.05,"z":0.03,"yaw":0.0,"class":"pink"}]'
+
+    # ══ planning scene ══════════════════════════════════════════════════
     add_table_collision: true
     table_x: 0.30
     table_y: 0.0
-    table_z: -0.05            # tâm box: đỉnh tại z = -0.05 + 0.05 = 0.00m
+    table_z: -0.05
     table_size_x: 0.80
     table_size_y: 0.80
     table_size_z: 0.10
+    add_detected_obstacles: true
 
-    # ---- Collision: box giá (thu nhỏ so với thực — planner tránh quét ngang) ----
-    add_rack_collision: true
-    rack_box_x: 0.30
-    rack_box_y: -0.01
-    rack_box_z: 0.10          # tâm box
-    rack_box_size_x: 0.15
-    rack_box_size_y: 0.10
-    rack_box_size_z: 0.20
+    add_rack_collision: true    # box bao quanh giá (thu nhỏ hơn giá thật một chút
+                                # để planner không coi chính lỗ cắm là vật cản)
+    rack_box_x: 0.26
+    rack_box_y: 0.0
+    rack_box_z: 0.05
+    rack_box_size_x: 0.08
+    rack_box_size_y: 0.20
+    rack_box_size_z: 0.10

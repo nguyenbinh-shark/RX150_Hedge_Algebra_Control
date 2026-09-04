@@ -1,0 +1,8 @@
+source;share/rx150_pick_place/hook/cmake_prefix_path.ps1
+source;share/rx150_pick_place/hook/cmake_prefix_path.dsv
+source;share/rx150_pick_place/hook/cmake_prefix_path.sh
+source;share/rx150_pick_place/local_setup.bash
+source;share/rx150_pick_place/local_setup.dsv
+source;share/rx150_pick_place/local_setup.ps1
+source;share/rx150_pick_place/local_setup.sh
+source;share/rx150_pick_place/local_setup.zsh

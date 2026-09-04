@@ -297,9 +297,13 @@ class HriMotionNode(Node):
             return
         box = SolidPrimitive()
         box.type = SolidPrimitive.BOX
-        box.dim = [float(self.get_parameter('table_size_x').value),
-                   float(self.get_parameter('table_size_y').value),
-                   float(self.get_parameter('table_size_z').value)]
+        # shape_msgs/SolidPrimitive: field là `dimensions`, KHÔNG phải `dim`.
+        # Message ROS 2 dùng __slots__ nên gán sai tên là AttributeError ngay ⇒
+        # _ensure_scene() throw ở dòng đầu của _worker_loop và worker chết luôn
+        # (node không bao giờ phát READY, mọi /hri/cmd_* rơi vào im lặng).
+        box.dimensions = [float(self.get_parameter('table_size_x').value),
+                          float(self.get_parameter('table_size_y').value),
+                          float(self.get_parameter('table_size_z').value)]
         pose = Pose()
         pose.position.x = float(self.get_parameter('table_x').value)
         pose.position.y = float(self.get_parameter('table_y').value)

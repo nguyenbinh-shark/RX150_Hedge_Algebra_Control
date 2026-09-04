@@ -1,0 +1,4 @@
+source;share/rx150_pick_place/local_setup.bash
+source;share/rx150_pick_place/local_setup.dsv
+source;share/rx150_pick_place/local_setup.sh
+source;share/rx150_pick_place/local_setup.zsh

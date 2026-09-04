@@ -152,28 +152,22 @@ class YoloTubeDetectorNode(Node):
         self.declare_parameter('roi_y_max', 0.25)
         self.declare_parameter('roi_z_min', -0.02)
         self.declare_parameter('roi_z_max', 0.25)
+        # Hiển thị: khối đặc alpha thấp gần như vô hình trên nền pointcloud, nên vẽ thêm
+        # khung dây 12 cạnh (giống CropBox của pc_filter ngày trước) mới nhìn ra hộp.
+        self.declare_parameter('roi_fill_alpha', 0.10)   # 0 = bỏ khối đặc, chỉ còn khung dây
+        self.declare_parameter('roi_edge_width', 0.004)  # bề dày đường (m); 0 = bỏ khung dây
 
-        # Tự động nạp giá trị từ config/roi_box_params.yaml nếu tồn tại
-        try:
-            import yaml
-            pkg_share = get_package_share_directory('rx150_perception')
-            yaml_file = os.path.join(pkg_share, 'config', 'roi_box_params.yaml')
-            if os.path.isfile(yaml_file):
-                with open(yaml_file, 'r') as f:
-                    cfg = yaml.safe_load(f)
-                    p_dict = cfg.get('/**', {}).get('ros__parameters', {}) or cfg.get('ros__parameters', {})
-                    if 'roi_x_min' in p_dict:
-                        self.set_parameters([
-                            rclpy.parameter.Parameter('roi_x_min', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_x_min'])),
-                            rclpy.parameter.Parameter('roi_x_max', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_x_max'])),
-                            rclpy.parameter.Parameter('roi_y_min', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_y_min'])),
-                            rclpy.parameter.Parameter('roi_y_max', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_y_max'])),
-                            rclpy.parameter.Parameter('roi_z_min', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_z_min'])),
-                            rclpy.parameter.Parameter('roi_z_max', rclpy.Parameter.Type.DOUBLE, float(p_dict['roi_z_max'])),
-                        ])
-                        self.get_logger().info(f"Đã nạp ROI Box từ YAML: X[{p_dict['roi_x_min']}..{p_dict['roi_x_max']}], Y[{p_dict['roi_y_min']}..{p_dict['roi_y_max']}], Z[{p_dict['roi_z_min']}..{p_dict['roi_z_max']}]")
-        except Exception as e:
-            self.get_logger().warn(f'Không nạp được roi_box_params.yaml: {e}')
+        # File ROI riêng. Nạp SAU declare nên nó GHI ĐÈ giá trị đến từ params-file của
+        # launch — chủ ý: vùng làm việc chỉ có MỘT nguồn sự thật, khỏi phải nhớ file nào
+        # thắng file nào. Đặt roi_params_file:='' nếu muốn ROI đến từ launch/CLI.
+        self.declare_parameter(
+            'roi_params_file',
+            os.path.join(
+                get_package_share_directory('rx150_perception'),
+                'config', 'roi_box_params.yaml',
+            ),
+        )
+        self._load_roi_file(self.get_parameter('roi_params_file').value)
 
         model_p = self.get_parameter('model_path').value
         if not model_p:
@@ -306,6 +300,113 @@ class YoloTubeDetectorNode(Node):
         self.sync.registerCallback(self.image_callback)
 
         self.get_logger().info('YOLO Tube Keypoint Detector đã sẵn sàng!')
+
+    # Khoá đọc từ roi_box_params.yaml. enable_roi_box nằm trong đây vì bản cũ chỉ nạp
+    # 6 khoá roi_* -> dòng enable_roi_box trong YAML là dòng chết, sửa cũng không ăn.
+    ROI_FLOAT_KEYS = (
+        'roi_x_min', 'roi_x_max',
+        'roi_y_min', 'roi_y_max',
+        'roi_z_min', 'roi_z_max',
+    )
+
+    def _load_roi_file(self, path):
+        """Nạp hộp giới hạn vùng nhận diện (ROI) từ YAML riêng.
+
+        Chỉ áp dụng những khoá thực sự có trong file; khoá thiếu giữ nguyên giá trị đã
+        declare. Không tìm thấy file thì chỉ log info — ROI vẫn chạy bằng default.
+        """
+        # 'none' là lối thoát cho CLI: rcl không parse nổi `-p roi_params_file:=` (chuỗi
+        # rỗng), nên phải có một sentinel gõ được. Qua launch thì '' cũng dùng được.
+        if not path or str(path).strip().lower() == 'none':
+            self.get_logger().info('roi_params_file tắt -> ROI lấy từ params-file/CLI.')
+            return
+        try:
+            import yaml
+            if not os.path.isfile(path):
+                self.get_logger().info(f'Không có {path} -> ROI dùng giá trị mặc định.')
+                return
+            with open(path, 'r') as f:
+                cfg = yaml.safe_load(f) or {}
+            p_dict = (cfg.get('/**', {}) or {}).get('ros__parameters', {}) \
+                or cfg.get('ros__parameters', {}) or {}
+
+            params = [
+                rclpy.parameter.Parameter(k, rclpy.Parameter.Type.DOUBLE, float(p_dict[k]))
+                for k in self.ROI_FLOAT_KEYS if k in p_dict
+            ]
+            if 'enable_roi_box' in p_dict:
+                params.append(rclpy.parameter.Parameter(
+                    'enable_roi_box', rclpy.Parameter.Type.BOOL,
+                    bool(p_dict['enable_roi_box'])))
+            if not params:
+                self.get_logger().warn(f'{path} không có khoá roi_* nào -> bỏ qua.')
+                return
+            self.set_parameters(params)
+
+            g = self.get_parameter
+            self.get_logger().info(
+                f"ROI Box <- {path} | {'BẬT' if g('enable_roi_box').value else 'TẮT'} | "
+                f"X[{g('roi_x_min').value:.3f}..{g('roi_x_max').value:.3f}] "
+                f"Y[{g('roi_y_min').value:.3f}..{g('roi_y_max').value:.3f}] "
+                f"Z[{g('roi_z_min').value:.3f}..{g('roi_z_max').value:.3f}] m "
+                f"(frame {self.get_parameter('target_frame').value})"
+            )
+        except Exception as e:
+            self.get_logger().warn(f'Không nạp được {path}: {e}')
+
+    def _roi_markers(self, xmin, xmax, ymin, ymax, zmin, zmax):
+        """Marker cho hộp ROI: khung dây 12 cạnh + (tuỳ chọn) khối đặc mờ.
+
+        Chỉ khối đặc alpha 0.15 thì trên nền pointcloud gần như không thấy gì — khung dây
+        mới là thứ nhìn ra được, giống CropBox của pc_filter.
+        """
+        out = []
+        stamp = self.get_clock().now().to_msg()
+        fill_a = float(self.get_parameter('roi_fill_alpha').value)
+        edge_w = float(self.get_parameter('roi_edge_width').value)
+
+        if fill_a > 0.0:
+            box = Marker()
+            box.header.frame_id = self.target_frame
+            box.header.stamp = stamp
+            box.ns = 'workspace_roi'
+            box.id = 999
+            box.type = Marker.CUBE
+            box.action = Marker.ADD
+            box.pose.position.x = (xmin + xmax) / 2.0
+            box.pose.position.y = (ymin + ymax) / 2.0
+            box.pose.position.z = (zmin + zmax) / 2.0
+            box.pose.orientation.w = 1.0
+            box.scale.x = xmax - xmin
+            box.scale.y = ymax - ymin
+            box.scale.z = zmax - zmin
+            box.color.r, box.color.g, box.color.b = 0.0, 0.8, 1.0
+            box.color.a = fill_a
+            out.append(box)
+
+        if edge_w > 0.0:
+            edges = Marker()
+            edges.header.frame_id = self.target_frame
+            edges.header.stamp = stamp
+            edges.ns = 'workspace_roi_edges'
+            edges.id = 998
+            edges.type = Marker.LINE_LIST
+            edges.action = Marker.ADD
+            edges.pose.orientation.w = 1.0
+            edges.scale.x = edge_w            # LINE_LIST chỉ dùng scale.x làm bề dày
+            edges.color.r, edges.color.g, edges.color.b = 0.0, 0.9, 1.0
+            edges.color.a = 0.9
+            c = [(x, y, z) for x in (xmin, xmax)
+                 for y in (ymin, ymax) for z in (zmin, zmax)]
+            # index vào c: bit0=z, bit1=y, bit2=x. 12 cạnh = mỗi cặp lệch đúng 1 bit.
+            for i, j in ((0, 1), (2, 3), (4, 5), (6, 7),
+                         (0, 2), (1, 3), (4, 6), (5, 7),
+                         (0, 4), (1, 5), (2, 6), (3, 7)):
+                for k in (i, j):
+                    edges.points.append(Point(x=c[k][0], y=c[k][1], z=c[k][2]))
+            out.append(edges)
+
+        return out
 
     def _resolve_device(self, requested: str) -> str:
         """Trả về device thực sự dùng được; cảnh báo to nếu phải rơi về CPU."""
@@ -887,24 +988,8 @@ class YoloTubeDetectorNode(Node):
 
         # Hiển thị Khung Hộp Vùng Làm Việc (Workspace ROI Box) trong RViz
         if enable_roi:
-            roi_box_marker = Marker()
-            roi_box_marker.header.frame_id = self.target_frame
-            roi_box_marker.header.stamp = self.get_clock().now().to_msg()
-            roi_box_marker.ns = 'workspace_roi'
-            roi_box_marker.id = 999
-            roi_box_marker.type = Marker.CUBE
-            roi_box_marker.action = Marker.ADD
-            roi_box_marker.pose.position.x = (roi_xmin + roi_xmax) / 2.0
-            roi_box_marker.pose.position.y = (roi_ymin + roi_ymax) / 2.0
-            roi_box_marker.pose.position.z = (roi_zmin + roi_zmax) / 2.0
-            roi_box_marker.scale.x = roi_xmax - roi_xmin
-            roi_box_marker.scale.y = roi_ymax - roi_ymin
-            roi_box_marker.scale.z = roi_zmax - roi_zmin
-            roi_box_marker.color.r = 0.0
-            roi_box_marker.color.g = 0.8
-            roi_box_marker.color.b = 1.0
-            roi_box_marker.color.a = 0.15  # Hộp bán trong suốt màu Cyan
-            marker_array.markers.append(roi_box_marker)
+            marker_array.markers.extend(self._roi_markers(
+                roi_xmin, roi_xmax, roi_ymin, roi_ymax, roi_zmin, roi_zmax))
 
         # Publish toàn bộ kết quả
         if len(pose_array.poses) > 0 or enable_roi:

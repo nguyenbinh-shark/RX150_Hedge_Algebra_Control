@@ -1,36 +1,103 @@
-# Tham số pick-place cho pick_place_moveit_node (Layer 2).
-# /** áp dụng cho node nào load file này (chỉ pick_place_moveit).
-# TUNE các giá trị place_* / grasp_* / table_* cho bàn rx150 thật của bạn.
+# Tham số cho pick_place_moveit_node — gắp vật được chỉ bằng cử chỉ tay, thả
+# vào một vị trí cố định.
+#
+# TRƯỚC KHI CHẠY ROBOT, kiểm tra mọi toạ độ đều với tới được (offline, ~1 giây):
+#   ros2 run rx150_pick_place rx150_reach_check.py --config <đường dẫn file này>
+#
+# Mọi toạ độ trong frame rx150/base_link, đơn vị m / rad.
 /**:
   ros__parameters:
-    # ---- Grasp geometry ----
-    approach_delta: 0.05         # m — chênh z khi tiếp cận/rút (cao trên vật)
-    grasp_pitch: 0.5             # rad — nghiêng tay gắp (5-DoF: pitch là DOF định hướng duy nhất)
-    finger_grasp_offset: 0.02    # m — hạ thêm để ngón kẹp hai bên vật (ee_link trên đỉnh vật)
-    # ---- Velocity scaling MoveIt (0..1) ----
-    velocity_scale_cruise: 0.3
-    velocity_scale_delicate: 0.1 # descend/place (chậm, an toàn)
-    # ---- Place zone (vị trí thả — TUNE) ----
-    place_x: 0.30
-    place_y: 0.0
-    place_z: 0.05
-    place_pitch: 0.5
-    # ---- Home / retreat ----
+    # ══ hệ thống ════════════════════════════════════════════════════════
+    robot_name: rx150
+    base_frame: rx150/base_link
+    joint_states_topic: /rx150/joint_states
+    dry_run: false              # true = chỉ lập kế hoạch + log, KHÔNG gửi goal
+
+    # ══ tư thế ══════════════════════════════════════════════════════════
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
-    detection_wait_s: 10.0
-    # ---- Nguồn phát hiện vật ----
-    # Topic PoseArray do yolo_tube_detector_node publish. Nhánh PCL đã bỏ (commit 60a6dde)
-    # nên đây là nguồn duy nhất. File YAML này là nguồn sự thật — launch KHÔNG override.
+    # Ladder pitch khi gắp: thử chúc thẳng đứng trước, hụt thì nghiêng dần.
+    # rx150 KHÔNG chúc 90° được ở r ≳ 0.29 m — xem bảng của rx150_reach_check.
+    grasp_pitch_ladder: [1.5708, 1.40, 1.25, 1.10, 0.95]
+    # Ladder pitch khi thả (0 rad = trục ee_z thẳng đứng ⇒ vật đứng thẳng).
+    place_pitch_ladder: [0.0, 0.15, 0.30, -0.15]
+
+    # ══ hình học gắp ════════════════════════════════════════════════════
+    approach_delta: 0.06        # độ cao pre-grasp phía trên điểm kẹp
+    grasp_z_offset: 0.0         # hạ thêm dưới TÂM vật (> 0 = xuống sâu hơn)
+    retract_height: 0.08        # rút thẳng đứng bao nhiêu sau khi nhả
+    min_ee_z: 0.015             # CHẶN CỨNG: ee không bao giờ xuống thấp hơn
+    object_length: 0.10         # kích thước vật (để attach vào planning scene)
+    object_radius: 0.0085
+
+    # ══ vị trí thả (TUNE theo bàn thật) ═════════════════════════════════
+    place_x: 0.28
+    place_y: -0.12
+    place_z: 0.06
+    place_approach_delta: 0.08
+
+    # ══ tốc độ ══════════════════════════════════════════════════════════
+    velocity_scale_cruise: 0.3      # scale MoveIt cho đoạn di chuyển tự do
+    velocity_scale_delicate: 0.1
+    approach_speed_mps: 0.05        # m/s cho các đoạn đi THẲNG (Descartes)
+    descend_speed_mps: 0.025        # hạ xuống kẹp — chậm
+    insert_speed_mps: 0.02          # đặt vật xuống — chậm nhất
+    retract_speed_mps: 0.04
+    use_linear_moves: true          # false = quay lại kiểu joint-goal thuần
+    linear_step_m: 0.006            # khoảng cách giữa 2 waypoint khi đi thẳng
+
+    # ══ MoveIt ══════════════════════════════════════════════════════════
+    planning_time_s: 5.0
+    planning_attempts: 5
+    execution_timeout_s: 30.0
+    goal_tolerance_rad: 0.01
+    verify_tolerance_rad: 0.06      # sai số tối đa CHẤP NHẬN được sau khi chạy
+    move_retries: 1
+
+    # ══ gripper ═════════════════════════════════════════════════════════
+    use_gripper_bridge: true        # true = qua MoveIt gripper_trajectory_bridge
+    finger_closed_m: 0.015
+    finger_open_m: 0.037
+    grasp_empty_margin_m: 0.0025    # ngón dừng dưới (0.015 + margin) ⇒ KẸP HỤT
+    grasp_settle_s: 0.4
+    grasp_retries: 1                # hụt thì hạ thêm regrasp_z_step rồi kẹp lại
+    regrasp_z_step: 0.008
+    gripper_pwm_grasp: 250.0        # chỉ dùng khi use_gripper_bridge=false
+    gripper_pwm_release: -250.0
+    set_gripper_pwm_mode: true
+
+    # ══ xử lý sự cố: chỗ đặt vật khi phải bỏ dở ═════════════════════════
+    reject_x: 0.22
+    reject_y: -0.20
+    reject_z: 0.10
+
+    # ══ cử chỉ tay ══════════════════════════════════════════════════════
+    selected_target_topic: /hand_gesture/selected_target
+    gesture_event_topic: /hand_gesture/event
+    trigger_event: ok_sign
+    selection_timeout_s: 5.0        # chỉ số chỉ tay cũ hơn ngần này → từ chối
+
+    # ══ nhận diện ═══════════════════════════════════════════════════════
     detection_topic: /yolo/detected_tubes
-    # ---- Gripper ----
-    # true  = qua MoveIt gripper_trajectory_bridge (stall-aware, giữ lực khi vận chuyển) — khuyến nghị
-    # false = raw PWM JointSingleCommand (fallback, như test_pick_place_moveit.py)
-    use_gripper_bridge: true
-    # ---- Collision: box bàn (ADD planning scene) + OctoMap từ pointcloud ----
-    add_table_collision: false
+    classes_topic: /yolo/tube_classes
+    detection_wait_s: 10.0
+    detection_max_age_s: 1.5        # dữ liệu cũ hơn ⇒ TỪ CHỐI gắp
+    median_frames: 5
+    median_collect_s: 1.3       # /yolo/detected_tubes đo được ~4.3 Hz (0.23 s/frame)
+                                # ⇒ dt = 1.3/5 = 0.26 s để 5 mẫu là 5 frame KHÁC nhau,
+                                # không lấy trùng 1 frame (làm yếu lọc nhấp nháy).
+    detection_assoc_radius_m: 0.03  # bán kính ghép cùng 1 vật giữa các frame
+    detection_min_hits_ratio: 0.6   # phải thấy ≥ 60% số frame mới tin
+    # yolo_tube_detector lấy yaw từ cv2.minAreaRect (hệ ẢNH). Nếu trục ảnh
+    # không trùng trục base_link thì bù ở đây (đặt 1 ống dọc +x rồi xem log).
+    detection_yaw_offset_deg: 0.0
+    detection_invert_yaw: false
+
+    # ══ planning scene ══════════════════════════════════════════════════
+    add_table_collision: true
     table_x: 0.30
     table_y: 0.0
-    table_z: -0.05              # tâm box: đỉnh box tại z = -0.05 + 0.05 = 0.00m
+    table_z: -0.05              # tâm box ⇒ mặt bàn ở z = -0.05 + 0.05 = 0.00
     table_size_x: 0.80
     table_size_y: 0.80
     table_size_z: 0.10
+    add_detected_obstacles: true    # các vật KHÔNG gắp → vật cản, đừng gạt đổ
