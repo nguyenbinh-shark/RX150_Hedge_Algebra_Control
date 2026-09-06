@@ -1,1 +1,0 @@
-/home/hust/interbotix_ws/src/rx150_pick_place/rx150_pick_place/gripper.py

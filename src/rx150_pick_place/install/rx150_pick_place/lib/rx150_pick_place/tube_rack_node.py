@@ -1,1 +1,0 @@
-/home/hust/interbotix_ws/src/rx150_pick_place/scripts/tube_rack_node.py

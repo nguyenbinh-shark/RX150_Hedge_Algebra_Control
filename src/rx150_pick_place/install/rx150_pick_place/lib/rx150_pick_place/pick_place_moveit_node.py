@@ -1,1 +1,0 @@
-/home/hust/interbotix_ws/src/rx150_pick_place/scripts/pick_place_moveit_node.py
