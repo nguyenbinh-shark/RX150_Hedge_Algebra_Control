@@ -1,0 +1,27 @@
+# rx150.repos — vendor Interbotix + third-party dùng cho workspace này.
+#
+# Khôi phục sau khi clone:   ./tools/setup_vendor.sh
+# (hoặc thủ công, xem bên dưới — NHỚ bước submodule, các repo này có submodule lồng)
+#
+#   vcs import src/vendor < rx150.repos
+#   vcs custom src/vendor --git --args submodule update --init --recursive
+#
+# Hash pin dưới đây lấy từ gitlink của commit 4815101 (lần import đầu tiên) và đã
+# đối chiếu với GitHub: cả ba đều đang là ĐỈNH nhánh `humble` của upstream.
+repositories:
+  interbotix_ros_core:
+    type: git
+    url: https://github.com/Interbotix/interbotix_ros_core.git
+    version: af18d4fe24ba08e09a0f1e92afaca1863e3205de   # humble, 2025-01-29
+  interbotix_ros_manipulators:
+    type: git
+    url: https://github.com/Interbotix/interbotix_ros_manipulators.git
+    version: b66d5b905725351dd71d3251a06cd3f4c777940f   # humble, 2025-01-02
+  interbotix_ros_toolboxes:
+    type: git
+    url: https://github.com/Interbotix/interbotix_ros_toolboxes.git
+    version: f52234371b9ec1cb1f5ee8241da32e6b8476fa5c   # humble, 2026-01-14
+  moveit_visual_tools:
+    type: git
+    url: https://github.com/ros-planning/moveit_visual_tools.git
+    version: e5681a71c63c8a5610da7ca7964ce2fab751ea6e   # tag 4.2.0 (nhánh ros2)
