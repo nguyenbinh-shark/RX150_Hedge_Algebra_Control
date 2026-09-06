@@ -15,7 +15,7 @@ hạ / rút đi THẲNG trong không gian Descartes):
   PLANNING (IK toàn chuỗi TRƯỚC khi động) → APPROACH → DESCEND → GRASP(+verify)
   → LIFT → TRANSPORT → PLACE → RELEASE → RETRACT → HOME
 
-Toàn bộ phần chấp hành nằm ở thư viện rx150_pick_place.* (dùng chung với
+Toàn bộ phần chấp hành nằm ở thư viện rx150_modules.* (dùng chung với
 tube_rack_node). Node này chỉ lo: chọn vật nào, thả ở đâu, khi nào.
 
 Yêu cầu T1: ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py use_camera:=true
@@ -34,9 +34,9 @@ from std_srvs.srv import Trigger
 from interbotix_xs_msgs.msg import JointSingleCommand
 from interbotix_xs_msgs.srv import OperatingModes
 
-from rx150_pick_place.params import build_stack, declare_common, read_common, table_object
-from rx150_pick_place.skills import joint_deg
-from rx150_pick_place.status import State
+from rx150_modules.params import build_stack, declare_common, read_common, table_object
+from rx150_modules.skills import joint_deg
+from rx150_modules.status import State
 
 NODE_DEFAULTS = {
     # ---- vùng đặt vật (TUNE theo bàn thật) ----

@@ -17,7 +17,7 @@ import argparse
 import math
 import sys
 
-from rx150_pick_place.kinematics import Rx150Kinematics
+from rx150_modules.kinematics import Rx150Kinematics
 
 RADII = [0.15, 0.18, 0.20, 0.22, 0.25, 0.28, 0.30, 0.33, 0.36, 0.40]
 HEIGHTS = [0.02, 0.04, 0.06, 0.08, 0.10, 0.12, 0.15, 0.20, 0.25]

@@ -1,4 +1,4 @@
-"""rx150_pick_place — thư viện dùng chung cho các node pick-place (Layer 2).
+"""rx150_modules — thư viện dùng chung cho mọi ứng dụng RX150 (Application Support).
 
 Tách khỏi node để: (1) hết copy-paste 3 bản MoveGroup primitive giữa
 pick_place_moveit_node / tube_rack_node / rx150_hri, (2) toán học hình học

@@ -17,9 +17,11 @@
 # Bẫy 2 — overlay:
 #   Phải source đủ 4 overlay TRƯỚC khi build, nếu không apriltag_ros và
 #   easy_handeye2 sẽ không tìm thấy.
-set -euo pipefail
+set -eo pipefail
 cd "$(dirname "$0")/.."
 
+# KHÔNG dùng `set -u`: /opt/ros/humble/setup.bash tham chiếu AMENT_TRACE_SETUP_FILES
+# khi biến này chưa được đặt, gặp `set -u` là thoát ngay.
 source /opt/ros/humble/setup.bash
 [ -f "$HOME/apriltag_ws/install/setup.bash" ]      && source "$HOME/apriltag_ws/install/setup.bash"
 [ -f "$HOME/easy_handeye2_ws/install/setup.bash" ] && source "$HOME/easy_handeye2_ws/install/setup.bash"

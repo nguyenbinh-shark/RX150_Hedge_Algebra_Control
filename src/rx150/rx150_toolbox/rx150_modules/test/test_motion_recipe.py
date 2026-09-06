@@ -14,11 +14,11 @@ import math
 
 import pytest
 
-from rx150_pick_place.kinematics import Rx150Kinematics
+from rx150_modules.kinematics import Rx150Kinematics
 
-motion = pytest.importorskip('rx150_pick_place.motion',
+motion = pytest.importorskip('rx150_modules.motion',
                              reason='cần moveit_msgs/control_msgs từ ROS')
-params = pytest.importorskip('rx150_pick_place.params')
+params = pytest.importorskip('rx150_modules.params')
 
 
 class _Log:

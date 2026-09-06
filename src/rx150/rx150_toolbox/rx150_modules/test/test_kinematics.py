@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Kiểm chứng IK/FK giải tích của rx150_pick_place.kinematics.
+"""Kiểm chứng IK/FK giải tích của rx150_modules.kinematics.
 
-Chạy được KHÔNG CẦN robot:  python3 -m pytest src/rx150_pick_place/test -q
+Chạy được KHÔNG CẦN robot:  python3 -m pytest src/rx150/rx150_toolbox/rx150_modules/test -q
 Nếu có interbotix_xs_modules + modern_robotics thì đối chiếu luôn với
 mr.FKinSpace (nguồn sự thật duy nhất về hình học rx150).
 """
@@ -9,7 +9,7 @@ import math
 
 import pytest
 
-from rx150_pick_place.kinematics import (
+from rx150_modules.kinematics import (
     ARM_JOINTS, Rx150Kinematics, wrap, wrist_rotate_for_axis,
 )
 

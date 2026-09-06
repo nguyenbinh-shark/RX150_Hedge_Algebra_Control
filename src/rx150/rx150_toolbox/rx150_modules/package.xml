@@ -1,36 +1,34 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>rx150_pick_place</name>
+  <name>rx150_modules</name>
   <version>0.3.0</version>
-  <description>rx150 Layer 2 — QUYẾT ĐỊNH: đọc nhận diện YOLO + cử chỉ tay → gọi MoveIt (move_action) gắp &amp; thả. Gồm 2 task node + kiểm tra tầm với; toàn bộ primitive dùng chung nằm ở rx150_modules.</description>
+  <description>Thư viện Python dùng chung cho mọi ứng dụng RX150 (tầng Application
+    Support): IK/FK giải tích 5-DoF, chấp hành MoveIt có verify, gripper có xác nhận
+    kẹp, planning scene attach/detach, các "verb" pick-place và state machine. Tách ra
+    từ rx150_pick_place để rx150_hri và các app sau không phải copy lại primitive.</description>
   <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
-  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
   <license>BSD</license>
+  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
-  <!-- ROS Python runtime + msg -->
+  <!-- ROS Python runtime + msg mà thư viện import -->
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
-  <exec_depend>std_srvs</exec_depend>
   <exec_depend>shape_msgs</exec_depend>
   <exec_depend>trajectory_msgs</exec_depend>
   <exec_depend>control_msgs</exec_depend>
   <exec_depend>moveit_msgs</exec_depend>
   <exec_depend>interbotix_xs_msgs</exec_depend>
 
-  <!-- Thư viện dùng chung (IK, MoveIt executor, gripper, scene, skills, status) -->
-  <exec_depend>rx150_modules</exec_depend>
+  <!-- Chỉ để lấy hình học rx150 (Slist/M) cho IK giải tích; có fallback nếu thiếu. -->
+  <exec_depend>interbotix_xs_modules</exec_depend>
 
-  <!-- Launch include yolo_tube_detector_node (Layer 1) -->
-  <exec_depend>rx150_perception</exec_depend>
-
-  <!-- rx150_reach_check.py đọc YAML khi chạy với cờ config (offline, không cần robot) -->
-  <exec_depend>python3-yaml</exec_depend>
-
+  <test_depend>ament_cmake_pytest</test_depend>
+  <test_depend>python3-pytest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 

@@ -40,8 +40,8 @@ from std_srvs.srv import Trigger
 from interbotix_xs_msgs.msg import JointSingleCommand
 from interbotix_xs_msgs.srv import OperatingModes
 
-from rx150_pick_place.params import build_stack, declare_common, read_common, table_object
-from rx150_pick_place.status import State
+from rx150_modules.params import build_stack, declare_common, read_common, table_object
+from rx150_modules.status import State
 
 NODE_DEFAULTS = {
     # ---- vận hành ----
