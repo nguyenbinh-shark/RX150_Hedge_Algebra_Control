@@ -13,7 +13,8 @@ try:
     from rx150_hri.scripts import hri_common
 except ImportError as exc:
     # Fallback: import trực tiếp từ đường dẫn tương đối (cho case chưa source)
-    root = Path(__file__).resolve().parents[2] / 'src' / 'rx150_hri' / 'scripts'
+    root = (Path(__file__).resolve().parents[2]
+            / 'src' / 'rx150' / 'apps' / 'rx150_hri' / 'scripts')
     if not (root / 'hri_common.py').exists():
         print(f'SKIP: không tìm thấy hri_common.py tại {root}', file=sys.stderr)
         print('  (thường do chưa source ~/interbotix_ws/install/setup.bash)', file=sys.stderr)

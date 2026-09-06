@@ -57,7 +57,10 @@ A_MAX = 5.0     # rad/s²
 DT = 0.01       # s (100 Hz)
 
 # --- Output directory ---
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Ghi kết quả vào thư mục ĐANG ĐỨNG, không phải vào scripts/ (scripts/ chỉ chứa
+# code; và khi cài rồi thì script nằm ở lib/, ghi vào đó là sai hẳn).
+# Đổi chỗ ghi bằng biến môi trường RX150_PLOT_DIR nếu cần.
+OUTPUT_DIR = os.environ.get("RX150_PLOT_DIR", os.getcwd())
 
 # ═══════════════════════════════════════════════════════════════════════
 # 1. FUZZY TYPE-1 EVAL (port trung thực từ fuzzy_type1.c)

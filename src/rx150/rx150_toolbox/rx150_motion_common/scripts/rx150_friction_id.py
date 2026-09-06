@@ -53,8 +53,25 @@ from std_msgs.msg import Float64MultiArray
 
 HAC_NODE = "/rx150/hac_node"
 HAC_SETPOINT_TOPIC = "/rx150/hac/setpoint"
-MOTOR_YAML = os.path.expanduser(
-    "~/interbotix_ws/src/rx150_motion_common/config/rx150_motor.yaml")
+def _motor_yaml():
+    """config/rx150_motor.yaml: ưu tiên bản đã cài, fallback cây nguồn.
+
+    Không hardcode ~/interbotix_ws/src/... nữa — đường dẫn đó chết mỗi lần
+    thư mục package đổi chỗ (và sai hẳn với ai clone ra chỗ khác).
+    """
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        p = os.path.join(get_package_share_directory("rx150_motion_common"),
+                         "config", "rx150_motor.yaml")
+        if os.path.isfile(p):
+            return p
+    except Exception:
+        pass
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "config", "rx150_motor.yaml")
+
+
+MOTOR_YAML = _motor_yaml()
 DEFAULT_REST_POSE = [0.0, -1.80, 1.55, 0.8, 0.0]
 DEFAULT_SPEEDS = [0.1, 0.2, 0.4]
 CRUISE_TOL_FRAC = 0.2       # |v_đo - v_target| < max(0.02, tol_frac * v_target)

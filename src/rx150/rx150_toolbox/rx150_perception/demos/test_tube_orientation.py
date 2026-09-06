@@ -27,9 +27,14 @@ import numpy as np
 # ── Load model ──────────────────────────────────────────────────────────
 MODEL_PATH = os.path.join(os.path.dirname(__file__), '..', 'models', 'best.pt')
 if not os.path.isfile(MODEL_PATH):
-    # Thử tìm ở vị trí tuyệt đối
-    MODEL_PATH = os.path.expanduser(
-        '~/interbotix_ws/src/rx150_perception/models/best.pt')
+    # Fallback: bản đã cài (share/rx150_perception/models) — tra qua ament
+    # thay vì hardcode ~/interbotix_ws/src/...
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        MODEL_PATH = os.path.join(
+            get_package_share_directory('rx150_perception'), 'models', 'best.pt')
+    except Exception:
+        pass
 if not os.path.isfile(MODEL_PATH):
     print(f'❌ Không tìm thấy model tại {MODEL_PATH}')
     sys.exit(1)

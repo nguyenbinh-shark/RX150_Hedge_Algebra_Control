@@ -53,7 +53,10 @@ def fuzzy_mock(e, ed):
     u = un * FUZZY_Ku
     return max(-HAC_umax, min(HAC_umax, u))
 
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Ghi kết quả vào thư mục ĐANG ĐỨNG, không phải vào scripts/ (scripts/ chỉ chứa
+# code; và khi cài rồi thì script nằm ở lib/, ghi vào đó là sai hẳn).
+# Đổi chỗ ghi bằng biến môi trường RX150_PLOT_DIR nếu cần.
+OUTPUT_DIR = os.environ.get("RX150_PLOT_DIR", os.getcwd())
 
 def plot_velocity_curves():
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
