@@ -193,12 +193,68 @@ class PickPlaceSkill:
             if scale < 1.0:
                 self.log.warn(f'{label}: chỉ rút được {dz * 100:.0f}cm '
                               f'(yêu cầu {height * 100:.0f}cm) — sát biên vùng làm việc.')
-            return self.move_linear_to(target,
+            if not self.move_linear_to(target,
                                        speed=speed or self.cfg.retract_speed_mps,
-                                       label=label)
+                                       label=label):
+                return False
+            self.retreat_radial(label=label + '/LÙI')
+            return True
         self.log.error(f'{label}: không rút thẳng lên được ở '
                        f'({x:.3f},{y:.3f},{z:.3f}) — giữ nguyên vị trí.')
         return False
+
+    def retreat_radial(self, distance=None, *, label='LÙI'):
+        """LÙI về phía gốc theo phương bán kính sau khi đã rút thẳng đứng.
+
+        key_point làm `x−0.05` sau mỗi lần nhả rồi mới về home. Lý do: rút thẳng
+        lên xong ngón kẹp vẫn còn NGAY TRÊN miệng lỗ; quay người về home từ đó
+        là quét ngang qua đầu ống vừa cắm. Ở đây lùi theo BÁN KÍNH (giảm r) thay
+        vì cứng nhắc −x — trùng với −x khi y ≈ 0 như bố cục của key_point, nhưng
+        vẫn đúng khi giá lệch sang bên.
+
+        Không lùi được thì chỉ cảnh báo: pha rút thẳng đứng mới là pha an toàn
+        bắt buộc, còn đây là lớp bảo hiểm thêm.
+        """
+        distance = (float(getattr(self.cfg, 'retreat_back_m', 0.0))
+                    if distance is None else float(distance))
+        if distance <= 1e-4:
+            return True
+        joints = self.current_joints()
+        x, y, z, pitch = self.kin.fk(joints)
+        r = math.hypot(x, y)
+        if r <= distance + 1e-3:
+            return True                      # đã ở sát trục, không còn gì để lùi
+        k = (r - distance) / r
+        target = self.plan_pose(x * k, y * k, z, [pitch], wrist=joints[4],
+                                seed=joints, label=label, quiet=True)
+        if target is None:
+            self.log.warn(f'{label}: không lùi được {distance * 100:.0f}cm '
+                          f'ở r={r:.3f}m — bỏ qua.')
+            return False
+        return self.move_linear_to(target,
+                                   speed=self.cfg.retract_speed_mps, label=label)
+
+    # ── cột trung chuyển trên tư thế home ───────────────────────────────
+    def plan_via(self, z, *, seed=None, pitch=None, label='VIA'):
+        """Điểm trên CỘT THẲNG ĐỨNG phía trên tư thế trung chuyển, ở độ cao z.
+
+        key_point không bao giờ quét thẳng từ chỗ gắp sang giá: luôn ghé
+        (0.18, 0, z+0.08) trước. Tay đi lên cột này rồi mới vươn ra ⇒ đoạn quét
+        ngang xảy ra ở nơi KHÔNG có gì, thay vì ở ngay cao độ miệng lỗ.
+
+        None nếu không bật via_staging, hoặc điểm đó không với tới (khi đó
+        caller cứ đi thẳng như cũ — mất lớp bảo hiểm chứ không hỏng chuỗi).
+        """
+        if not bool(getattr(self.cfg, 'via_staging', False)):
+            return None
+        hx = float(getattr(self.cfg, 'home_x', 0.18))
+        hy = float(getattr(self.cfg, 'home_y', 0.0))
+        hp = float(getattr(self.cfg, 'home_pitch', 0.0)) if pitch is None else float(pitch)
+        via = self.plan_pose(hx, hy, z, [hp], seed=seed, label=label, quiet=True)
+        if via is None:
+            self.log.warn(f'{label}: cột trung chuyển ({hx:.3f},{hy:.3f},{z:.3f}) '
+                          f'không với tới — đi thẳng (không có điểm ghé).')
+        return via
 
     # ── kẹp / nhả (có xác nhận + planning scene) ─────────────────────────
     def open_gripper(self):
@@ -253,8 +309,12 @@ class PickPlaceSkill:
         return True
 
     def release_at(self, insert: Waypoint, *, hover: Waypoint = None,
-                   speed=None, retract=True, state=None):
-        """(hover →) hạ thẳng vào chỗ đặt → nhả → detach → rút thẳng lên."""
+                   via: Waypoint = None, speed=None, retract=True, state=None):
+        """(via → hover →) hạ thẳng vào chỗ đặt → nhả → detach → rút thẳng + lùi."""
+        if via is not None:
+            self.status.set(State.TRANSPORT, f'{via}')
+            if not self.move_to(via, label='VIA'):
+                return False
         if hover is not None:
             self.status.set(State.TRANSPORT, f'{hover}')
             if not self.move_to(hover, label='TRANSPORT'):

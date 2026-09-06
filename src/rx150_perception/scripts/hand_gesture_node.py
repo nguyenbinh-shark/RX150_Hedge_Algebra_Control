@@ -5,7 +5,7 @@
 # (khoảng cách điểm→tia < 8 cm), is_ok_sign (landmark 4↔8).
 #
 # Topic vào:
-#   /yolo/detected_objects (PoseArray base frame — từ yolo_detector_node)
+#   /yolo/detected_tubes (PoseArray base frame — từ yolo_detector_node)
 #   /camera/camera/color/image_raw + /camera/camera/aligned_depth_to_color/image_raw
 #   + CameraInfo
 # Topic ra:

@@ -7,6 +7,10 @@ Mọi chuyển động đi qua `move_group`; **không bao giờ** publish trực
 Gói này gồm **thư viện dùng chung** (`rx150_pick_place/`) + **2 task node**
 (`scripts/`) + **công cụ kiểm tra offline** (`rx150_reach_check.py`).
 
+> 🔧 **Chạy trên phần cứng thật?** Đọc [`docs/RUNBOOK.md`](docs/RUNBOOK.md) —
+> thang bậc bring-up B0→B6 có tiêu chí GO/NO-GO, bảng triage triệu chứng, và
+> quy trình thu log. README này là *tham chiếu*; RUNBOOK là *quy trình*.
+
 ```
 rx150_pick_place/
   kinematics.py  IK/FK giải tích 5-DoF (nghiệm đóng, chọn nhánh theo seed)
@@ -46,33 +50,126 @@ D435 ──rs_launch──► /camera/camera/{color, aligned_depth_to_color, dep
 
 ## Chạy
 
-**T1 — motion stack + camera + hand-eye:**
+**T1 + T2 — motion stack + camera + TF calib.** Dùng wrapper có sẵn ở gốc workspace
+(nó tự `source_all.sh`, tự đặt đúng cờ):
 ```bash
+./rx150.sh t1      # robot + MoveIt + camera
+./rx150.sh t2      # perception: static_trans_pub (TF calib) + RViz
+```
+Hoặc gõ tay:
+```bash
+source ~/interbotix_ws/source_all.sh
 ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
-    use_camera:=true rs_camera_pointcloud_enable:=true \
-    use_camera_static_tf:=false use_handeye_publisher:=true
+    use_camera:=true use_camera_static_tf:=false use_handeye_publisher:=false
+ros2 launch rx150_perception rx150_perception.launch.py use_camera:=false use_rviz:=true
 ```
 
-**T2 — chọn 1 trong 2 task:**
+> ⚠️ **Phải có đúng MỘT nguồn phát TF `world ↔ camera`**, và nó là `static_trans_pub`
+> (do `rx150_perception.launch.py` khởi động, đọc `rx150_perception/config/static_transforms.yaml`).
+> `fuzzy_moveit.launch.py` **không** chạy node đó. Vì thế:
+> - `use_camera_static_tf:=true` → TF cứng `(1, 0, 1)` chỉ là placeholder chưa hiệu chuẩn.
+> - `use_handeye_publisher:=true` → cần `~/.ros/easy_handeye2/rx150_eob.yaml`; **file
+>   này chưa tồn tại** cho tới khi bạn chạy `handeye_calibrate.launch.py` và bấm Save.
+>
+> Bật cả hai hoặc bật nhầm một cái ⇒ TF nhảy hoặc **không có TF nào**. Không có TF thì
+> `yolo_tube_detector` lookup `rx150/base_link ← camera_color_optical_frame` thất bại và
+> `/yolo/detected_tubes` im lặng — trông y hệt "YOLO không nhận được gì". Kiểm bằng:
+> ```bash
+> ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link
+> ```
+
+Cần đám mây điểm (chỉ để nhìn trong RViz / OctoMap) thì `./rx150.sh t1-pcl`, hoặc thêm
+`rs_camera_pointcloud_enable:=true` — ~295 MB/s, YOLO **không** cần.
+
+**T3 — chọn 1 trong 2 task:**
 ```bash
-ros2 launch rx150_pick_place pick_place.launch.py            # gắp theo cử chỉ tay
 ros2 launch rx150_pick_place tube_rack.launch.py             # ống nghiệm → giá
+ros2 launch rx150_pick_place pick_place.launch.py            # gắp theo cử chỉ tay
 ```
+> ⚠️ Hai launch này **tự chạy `yolo_tube_detector`** (`detector` / `enable_detector`
+> mặc định `true`). Nếu bạn đang đi đường một-terminal `fuzzy_moveit_perception.launch.py`
+> (vốn đã có `use_yolo:=true`) thì **bắt buộc** thêm `detector:=false` —
+> hai node trùng tên `yolo_tube_detector` sẽ nạp YOLO 2 lần lên GPU và publish
+> `/yolo/detected_tubes` từ 2 nguồn. Đường `./rx150.sh t1 → t2 → tubes` thì không
+> dính, vì `rx150_perception.launch.py` không chạy YOLO.
+
 Thêm `dry_run:=true` để chạy **toàn bộ** state machine (nhận diện, IK, kế hoạch,
 log từng waypoint) mà **không gửi goal** nào tới robot. Nên làm việc này trước.
 
-> ⚠️ **Trước T1:** `pkill -f xs_sdk` (2 driver trên 1 bus → crash); cánh tay thoáng
-> (`fuzzy_node` PWM-drive về home ngay khi launch); e-stop trong tầm tay.
+Không có camera thì bơm ống giả để vẫn chạy hết chuỗi:
+```bash
+ros2 launch rx150_pick_place tube_rack.launch.py \
+    detector:=false dry_run:=true \
+    fake_tubes:='[{"x":0.20,"y":-0.15,"z":0.03,"yaw":0.0,"class":"pink"}]'
+```
+> `ros2 run … -p fake_tubes:='[{…}]'` **không dùng được**: `rcl` parse giá trị `-p`
+> theo YAML nên JSON array thành flow-sequence → `Unknown YAML event`. Dùng launch
+> arg ở trên, hoặc `--params-file`.
+
+### Backend chấp hành (`motion_backend`)
+
+| | `moveit` (mặc định) | `direct` |
+|---|---|---|
+| Đường đi | node → `move_action` → OMPL → `execute_trajectory` → bridge → fuzzy PWM → xs_sdk | node → **`arm_controller/follow_joint_trajectory`** → fuzzy PWM → xs_sdk |
+| Tránh vật cản | có (planning scene, ACM, attach/detach) | **không** — an toàn nằm ở waypoint |
+| Gripper | qua `gripper_trajectory_bridge` (move_group) | **PWM trực tiếp** (tự chuyển, có log) |
+| Khi nào dùng | mặc định | `move_group` hỏng/không có, hoặc muốn hành vi y hệt bản `key_point` đã chạy thật |
+
+```bash
+ros2 launch rx150_pick_place tube_rack.launch.py motion_backend:=direct
+```
+Đường **phần cứng không đổi** giữa 2 backend — `direct` chỉ bỏ khâu lập kế hoạch,
+vẫn đi qua đúng `fuzzy_trajectory_bridge` mà MoveIt vẫn dùng để chấp hành.
+
+> ⚠️ **Trước T1:** `pkill -f xs_sdk` (2 driver trên 1 bus U2D2 → tranh chấp serial);
+> dọn thoáng quanh robot; e-stop trong tầm tay.
+>
+> `fuzzy_node` **không** phải bring-up thụ động: ngay khi `/rx150/get_robot_info`
+> trả lời, nó đặt cả nhóm `arm` sang **PWM mode + bật torque** rồi timer 100 Hz bắt
+> đầu bơm PWM. Vì `fuzzy_moveit.launch.py` ép `enable_profile: False`, chừng nào
+> bridge chưa gửi setpoint thì `q_ref = reference_pose = [0, −1.80, 1.55, 0.8, 0]`
+> (tư thế **sleep**, không phải home) được đưa vào **như một bước nhảy**, không qua
+> Ruckig làm mượt. Tay đang ở xa sleep ⇒ giật. Hãy bắt đầu từ tư thế gần sleep.
 
 ### Kiểm tra TRƯỚC khi cấp điện (không cần robot, ~1 giây)
+
+```bash
+./rx150.sh reach        # bảng tầm với + CẢ HAI config + tư thế trung chuyển
+```
+
+Hoặc từng phần:
+
 ```bash
 ros2 run rx150_pick_place rx150_reach_check.py                       # bảng tầm với
 ros2 run rx150_pick_place rx150_reach_check.py --config \
   $(ros2 pkg prefix rx150_pick_place)/share/rx150_pick_place/config/tube_rack_params.yaml
+ros2 run rx150_pick_place rx150_reach_check.py --point 0.18 0 0.18 --pitch 0
 ```
+
+Dòng cuối kiểm **tư thế trung chuyển** (`home_xyz_pitch`). IK điểm đó fail thì
+`resolve_home()` chỉ log ERROR rồi **âm thầm quay lại `home_joints` thô
+`[0,0,0,0,0]`** — FK của nó là `(0.359, 0, 0.255)`, tức tay duỗi thẳng **vượt QUA
+giá ở x = 0.26**, đúng cái mà `home_xyz_pitch` sinh ra để tránh.
+
 rx150 **không** chúc thẳng đứng (pitch 90°) được ở mọi nơi — hết tầm từ r ≈ 0.29 m,
 còn 64° ở r = 0.36 m. Rất nhiều ca "gắp không được" chỉ là điểm gắp nằm ngoài bao
 hình khả thi. Bảng trên cho biết ngay.
+
+### Smoke-test theo tầng (không phát lệnh tới robot)
+
+```bash
+./rx150.sh check        # joint_states + action server + TF/detection
+```
+
+Mỗi bài exit 0 = GO, khác 0 = NO-GO **kèm nguyên nhân gốc + lệnh kiểm tiếp theo**.
+Chi tiết: [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §4.
+
+### Khi báo lỗi — thu bằng chứng
+
+```bash
+./rx150.sh diag b5a-home-fail       # -> diag_<nhãn>_<ts>.tar.gz
+./tools/record_pickplace.sh b5a     # bag 5 tầng, replay trong PlotJuggler
+```
 
 ### Vận hành khi đang chạy
 | Việc | Lệnh |
@@ -110,7 +207,9 @@ Toàn bộ tham số nằm trong `config/*.yaml` (có chú thích từng dòng).
 
 | Nhóm | Tham số | Ý nghĩa |
 |---|---|---|
-| Hình học gắp | `approach_delta`, `grasp_z_offset`, `retract_height`, `min_ee_z` | `min_ee_z` là chặn cứng chống đâm bàn khi depth nhiễu |
+| Chấp hành | `motion_backend`, `arm_action`, `direct_joint_speed_rad_s` | `moveit` (có planner) hay `direct` (không planner) — xem bảng ở mục Chạy |
+| Tư thế trung chuyển | `home_xyz_pitch`, `home_joints` | ghi **toạ độ**, `home_joints` được tính lại bằng IK lúc khởi động |
+| Hình học gắp | `approach_delta`, `grasp_z_offset`, `retract_height`, `retreat_back_m`, `via_staging`, `min_ee_z` | `min_ee_z` là chặn cứng chống đâm bàn khi depth nhiễu |
 | Pitch | `grasp_pitch_ladder`, `place_pitch_ladder` | thử dốc nhất trước, nới dần — thay cho 1 giá trị `grasp_pitch` cố định |
 | Tốc độ | `*_speed_mps` (đoạn đi thẳng), `velocity_scale_*` (đoạn tự do) | mm/s là đơn vị nói được với người vận hành |
 | Gripper | `grasp_empty_margin_m`, `grasp_retries`, `regrasp_z_step` | ngưỡng phát hiện "kẹp vào không khí" + regrasp |
@@ -143,6 +242,9 @@ Toàn bộ tham số nằm trong `config/*.yaml` (có chú thích từng dòng).
   lực khi vận chuyển).
 - **PWM fallback (`use_gripper_bridge: false`):** `JointSingleCommand(name='gripper')`.
   Bản này **chờ tới khi ngón dừng hẳn** rồi mới trả về (không `sleep(2.0)` mù).
+  `motion_backend: direct` **tự chuyển sang đường này** (và log ra lý do): đường
+  bridge của gripper đi qua chính `move_group`, nên giữ nó ở direct mode là mâu thuẫn.
+  Nhớ để `set_gripper_pwm_mode: true` để motor thực sự ở PWM mode.
 - **Xác nhận kẹp:** sau khi đóng, đọc `left_finger`:
   sát giới hạn dưới ⇒ kẹp vào không khí (FAIL); sát giới hạn trên ⇒ chưa đóng (FAIL);
   dừng ở giữa ⇒ có vật. Hỏng thì regrasp `grasp_retries` lần rồi mới RECOVERY.
@@ -168,6 +270,29 @@ cd src/rx150_pick_place && python3 -m pytest test -q
 Thư viện được cài vào `lib/rx150_pick_place/` và đưa vào `PYTHONPATH` bằng env-hook
 (không dùng `ament_python_install_package`: setuptools 84 trên máy này không hợp với
 `packaging` 21.3 nên bước build egg fail).
+
+## Áp từ bản `key_point` đã chạy thật (0.2.1)
+
+Bản `key_point/task3_4tubes.py` điều khiển tay bằng `bot.arm.set_ee_pose_components()`
+— không planner, không planning scene — nhưng đã gắp-cắm được 4 ống thật. Ba thứ nó
+làm mà bản này thiếu, nay đã đưa vào:
+
+| key_point làm | Bản này trước đây | Nay |
+|---|---|---|
+| Mọi pha bắt đầu/kết thúc ở "fake home pose" `(0.18, 0, 0.18)` — thu gọn, **sau lưng giá** | `home_joints: [0,0,0,0,0]` ⇒ FK = `(0.359, 0, 0.255)`: tay **duỗi thẳng, vượt QUA giá ở x = 0.26**. `go_home()` chạy đầu mỗi chu kỳ và sau mỗi `recover()` ⇒ mỗi lần "về home" là quét ngang đúng chỗ cắm ống | `home_xyz_pitch: [0.18, 0, 0.18, 0]`, `home_joints` **tính lại bằng IK** lúc khởi động (log ra góc thật) |
+| Vào giá luôn ghé cột `(0.18, 0, z+0.08)` trước, không quét thẳng từ chỗ gắp sang slot | `LIFT → HOVER` một nhát ở đúng cao độ miệng lỗ | `PickPlaceSkill.plan_via()` + `release_at(via=…)`, bật bằng `via_staging` |
+| Nhả xong: lên `z+0.05` → **lùi `x−0.05`** → mới về home | chỉ rút thẳng lên rồi về home — ngón vẫn ở ngay trên miệng lỗ khi bắt đầu xoay | `PickPlaceSkill.retreat_radial()`, `retreat_back_m: 0.05`; lùi theo **bán kính** (trùng `−x` khi `y ≈ 0` như bố cục key_point, vẫn đúng khi giá lệch sang bên) |
+| Không qua MoveIt chút nào | bắt buộc phải có `move_group` | `motion_backend: direct` — xem bảng ở mục Chạy |
+
+Hai thứ **không** đổi vì kiểm tra lại thì bản này đã đúng:
+- `wrist_rotate`: key_point dùng `roll + atan2(y,x)` với `roll = −atan2(dy,dx)`, rút gọn
+  ra đúng `waist − yaw` — trùng `wrist_rotate_for_axis()`.
+- pitch gắp `π/2` (ống nằm, trục `ee_z` ngang) / pitch cắm `0` (ống dựng, trục `ee_z`
+  đứng) — trùng `grasp_pitch_ladder` / `place_pitch_ladder`.
+
+`grasp_z_offset` thì **cố ý giữ `0.0`**: key_point kẹp ở `z + 0.01` (cao hơn tâm phát
+hiện 1 cm), nhưng con số đó phụ thuộc quy ước z của detector bên đó. Đo trên bàn của
+bạn rồi đặt `grasp_z_offset: -0.01` nếu thấy ngón kẹp thấp quá.
 
 ## Những gì đã sửa so với bản trước (0.1.0)
 

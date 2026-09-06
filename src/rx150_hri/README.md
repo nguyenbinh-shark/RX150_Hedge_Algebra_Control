@@ -6,7 +6,7 @@ kẹp/nhả** gửi qua topic cho executor `hri_motion_node` (MoveIt + IK-oracle
 
 ```text
 rx150_perception (giữ nguyên)                 rx150_hri
-├─ yolo_detector ─► /yolo/detected_objects ──► hri_task_node   (B2 trở đi)
+├─ yolo_detector ─► /yolo/detected_tubes ──► hri_task_node   (B2 trở đi)
 └─ hand_gesture  ─► /hand_gesture/* (B3+)       │ logic chọn vật + định trình tự
                                                  ├─► /hri/cmd_pose     (PoseStamped: xyz + pitch)
                                                  ├─► /hri/cmd_gripper  (Bool: True = kẹp)
@@ -29,7 +29,7 @@ rx150_perception (giữ nguyên)                 rx150_hri
 | Bước | Nội dung | Trạng thái |
 | ---- | -------- | ---------- |
 | B1 | Gắp tại điểm cố định `pick_*` → nhả tại điểm cố định `place_*` (không camera) | **xong** |
-| B2 | Camera đọc `/yolo/detected_objects` → chọn vật ổn định gần base → gắp, nhả place | tới |
+| B2 | Camera đọc `/yolo/detected_tubes` → chọn vật ổn định gần base → gắp, nhả place | tới |
 | B3 | Gesture chọn vật (tái dùng `/hand_gesture/selected_target` + `ok_sign`) | sau |
 | B4 | Handover (OK-sign khi cầm ống → trao cho người) + RViz markers | sau |
 

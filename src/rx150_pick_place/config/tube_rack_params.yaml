@@ -13,11 +13,24 @@
     base_frame: rx150/base_link
     joint_states_topic: /rx150/joint_states
     dry_run: false              # true = chỉ lập kế hoạch + log, KHÔNG gửi goal
+    motion_backend: moveit      # moveit = qua move_group (OMPL + planning
+                                #          scene, tránh vật cản)
+                                # direct = bắn thẳng FollowJointTrajectory
+                                #          xuống fuzzy_trajectory_bridge,
+                                #          KHÔNG planner (mô hình key_point)
+    arm_action: /rx150/arm_controller/follow_joint_trajectory
+    direct_joint_speed_rad_s: 0.6
     auto_start: true            # false = chờ `ros2 service call /tube_rack/run`
     pick_order: nearest_first   # nearest_first | farthest_first | detection
     max_consecutive_failures: 2 # hỏng liên tiếp bấy nhiêu ống ⇒ dừng chu kỳ
 
     # ══ tư thế ══════════════════════════════════════════════════════════
+    # Tư thế TRUNG CHUYỂN (x, y, z, pitch) — "fake home pose" của key_point.
+    # Thu gọn và nằm SAU LƯNG giá. home_joints bên dưới được TÍNH LẠI từ đây
+    # bằng IK lúc khởi động (log ra góc thật); đặt home_xyz_pitch: [] để dùng
+    # home_joints thô. ĐỪNG để home_joints [0,0,0,0,0]: FK của nó là
+    # (0.359, 0, 0.255) — tay duỗi thẳng VƯỢT QUA giá ở x = 0.26.
+    home_xyz_pitch: [0.18, 0.0, 0.18, 0.0]
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
     grasp_pitch_ladder: [1.5708, 1.40, 1.25, 1.10, 0.95]
     # Khi rack_tilt_deg = 0 thì ladder này được dùng nguyên; khi giá nghiêng,
@@ -52,6 +65,10 @@
     approach_delta: 0.07
     grasp_z_offset: 0.0
     retract_height: 0.10        # phải cao hơn phần ống nhô lên khỏi miệng lỗ
+    retreat_back_m: 0.05        # lùi theo bán kính sau khi rút thẳng
+                                # (key_point: x−0.05 rồi mới về home)
+    via_staging: true           # ghé cột thẳng đứng trên tư thế trung
+                                # chuyển trước khi vươn ra chỗ thả/giá
     min_ee_z: 0.015
     object_radius: 0.0085       # bán kính ống (attach vào planning scene)
 

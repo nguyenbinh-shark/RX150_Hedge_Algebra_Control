@@ -258,10 +258,15 @@ class PickPlaceMoveItNode(Node):
             self.status.end_cycle(False)
             return
 
+        place_hover_z = self.cfg.place_z + self.cfg.place_approach_delta
+        # Ghé cột thẳng đứng trên tư thế trung chuyển trước khi vươn sang chỗ thả
+        # (xem PickPlaceSkill.plan_via) — đoạn quét ngang xảy ra ở chỗ trống.
+        via = self.skill.plan_via(place_hover_z, seed=grasp.lift.joints,
+                                  label='VIA-THẢ')
         place_hover = self.skill.plan_pose(
-            self.cfg.place_x, self.cfg.place_y,
-            self.cfg.place_z + self.cfg.place_approach_delta,
-            self.cfg.place_pitch_ladder, seed=grasp.lift.joints, label='PLACE-HOVER')
+            self.cfg.place_x, self.cfg.place_y, place_hover_z,
+            self.cfg.place_pitch_ladder,
+            seed=(via.joints if via else grasp.lift.joints), label='PLACE-HOVER')
         place = None
         if place_hover is not None:
             place = self.skill.plan_pose(
@@ -275,7 +280,7 @@ class PickPlaceMoveItNode(Node):
             self.status.end_cycle(False)
             return
         self.get_logger().info('Kế hoạch: ' + self.skill.describe(
-            grasp.pre, grasp.grasp, grasp.lift, place_hover, place))
+            grasp.pre, grasp.grasp, grasp.lift, via, place_hover, place))
 
         # ---- CHẤP HÀNH ----
         if not self.skill.grasp_at(grasp):
@@ -285,7 +290,7 @@ class PickPlaceMoveItNode(Node):
             self.status.end_cycle(False)
             return
 
-        if not self.skill.release_at(place, hover=place_hover):
+        if not self.skill.release_at(place, hover=place_hover, via=via):
             self.status.fault('thả thất bại')
             self.skill.recover('place fail')
             self._clear_obstacles(len(obstacles))

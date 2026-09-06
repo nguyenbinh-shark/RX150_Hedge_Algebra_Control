@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(time bash /home/hust/interbotix_ws/tools/collect_diag.sh smoketest)"
+    ]
+  }
+}

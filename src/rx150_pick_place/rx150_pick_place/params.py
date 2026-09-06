@@ -7,6 +7,7 @@ nghĩa nhưng khác tên/khác default) nên chỉnh máy xong ở task này san
 lại phải chỉnh lại. Ở đây 1 chỗ khai báo, 2 node dùng chung; node chỉ khai thêm
 tham số RIÊNG của nó (giá đỡ, gesture…).
 """
+import math
 from types import SimpleNamespace
 
 from .detection import DetectionSource
@@ -26,7 +27,24 @@ COMMON_DEFAULTS = {
     'gripper_group': 'interbotix_gripper',
     'dry_run': False,
 
+    # ---- chấp hành ----
+    # 'moveit' = qua move_group (có OMPL + planning scene).
+    # 'direct' = bắn thẳng FollowJointTrajectory xuống fuzzy_trajectory_bridge,
+    #            không planner — giống bản pick-place đã chạy thật ở key_point.
+    'motion_backend': 'moveit',
+    'arm_action': '/rx150/arm_controller/follow_joint_trajectory',
+    'direct_joint_speed_rad_s': 0.6,   # rad/s ở velocity_scale = 1.0
+
     # ---- tư thế ----
+    # home_xyz_pitch: tư thế TRUNG CHUYỂN (x, y, z, pitch) — mọi chu kỳ bắt đầu
+    # và kết thúc ở đây, và mọi lần vào/ra giá đều đi qua cột thẳng đứng phía
+    # trên điểm này. Lấy từ "fake home pose" (0.18, 0, 0.18) của key_point:
+    # THU GỌN và nằm SAU LƯNG giá.
+    #   home_joints = [0,0,0,0,0] (bản cũ) → FK = (0.359, 0, 0.255): tay DUỖI
+    #   THẲNG, vượt QUA giá ở x = 0.26 ⇒ mỗi lần "về home" là quét ngang đúng
+    #   chỗ cắm ống. Đó là lỗi hình học, không phải khác biệt phong cách.
+    # Đặt [] để bỏ qua và dùng home_joints thô bên dưới.
+    'home_xyz_pitch': [0.18, 0.0, 0.18, 0.0],
     'home_joints': [0.0, 0.0, 0.0, 0.0, 0.0],
     # Ladder pitch: rx150 KHÔNG chúc thẳng đứng được ở mọi nơi (hết tầm từ
     # r ≈ 0.29 m — chạy `rx150_reach_check.py` để xem bảng). Ladder cho phép
@@ -38,6 +56,10 @@ COMMON_DEFAULTS = {
     'approach_delta': 0.06,      # m — độ cao pre-grasp trên điểm kẹp
     'grasp_z_offset': 0.0,       # m — hạ thêm dưới tâm vật (>0 = xuống sâu hơn)
     'retract_height': 0.08,      # m — rút thẳng đứng sau khi nhả
+    'retreat_back_m': 0.05,      # m — LÙI theo phương bán kính sau khi rút thẳng
+                                 # (key_point: x−0.05 trước khi về home) — 0 = tắt
+    'via_staging': True,         # đi qua cột thẳng đứng trên home_xyz_pitch
+                                 # trước khi quét ngang vào/ra giá
     'min_ee_z': 0.015,           # m — chặn dưới tuyệt đối cho ee (chống đâm bàn)
     'object_length': 0.10,       # m — kích thước vật để attach vào planning scene
     'object_radius': 0.0085,     # m
@@ -119,6 +141,38 @@ def read_common(node, names=None):
     return cfg
 
 
+def resolve_home(node, kin, cfg):
+    """Đổi home_xyz_pitch (dễ đọc, dễ đo) → cfg.home_joints qua IK giải tích.
+
+    Một nguồn sự thật duy nhất: YAML ghi TOẠ ĐỘ tư thế trung chuyển, không phải
+    5 số radian không ai đọc được. Cũng gắn cfg.home_x/y/z/pitch để skills dựng
+    cột trung chuyển thẳng đứng phía trên chính điểm đó.
+    """
+    log = node.get_logger()
+    pose = list(getattr(cfg, 'home_xyz_pitch', None) or [])
+    if len(pose) != 4:
+        x, y, z, pitch = kin.fk(cfg.home_joints)
+        cfg.home_x, cfg.home_y, cfg.home_z, cfg.home_pitch = x, y, z, pitch
+        log.info(f'home_xyz_pitch rỗng → dùng home_joints thô, FK = '
+                 f'({x:.3f},{y:.3f},{z:.3f}) pitch={math.degrees(pitch):.0f}°.')
+        return cfg
+    x, y, z, pitch = (float(v) for v in pose)
+    joints = kin.ik(x, y, z, pitch)
+    if joints is None:
+        log.error(f'home_xyz_pitch ({x:.3f},{y:.3f},{z:.3f}) '
+                  f'pitch={math.degrees(pitch):.0f}° KHÔNG với tới '
+                  f'({kin.reach_report(x, y, z, pitch)}) — giữ home_joints thô.')
+        hx, hy, hz, hp = kin.fk(cfg.home_joints)
+        cfg.home_x, cfg.home_y, cfg.home_z, cfg.home_pitch = hx, hy, hz, hp
+        return cfg
+    cfg.home_joints = list(joints)
+    cfg.home_x, cfg.home_y, cfg.home_z, cfg.home_pitch = x, y, z, pitch
+    log.info(f'Tư thế trung chuyển ({x:.3f},{y:.3f},{z:.3f}) '
+             f'pitch={math.degrees(pitch):.0f}° → home_joints = '
+             f'{[round(math.degrees(v), 1) for v in joints]}°.')
+    return cfg
+
+
 def build_stack(node, cfg, *, callback_group=None, status_topic='status',
                 publisher=None):
     """Dựng đủ bộ: kinematics → joint monitor → MoveIt → gripper → scene → skill.
@@ -126,6 +180,7 @@ def build_stack(node, cfg, *, callback_group=None, status_topic='status',
     Trả SimpleNamespace để node chỉ việc dùng stack.skill / stack.detection.
     """
     kin = Rx150Kinematics()
+    resolve_home(node, kin, cfg)
     js = JointStateMonitor(node, topic=cfg.joint_states_topic,
                            callback_group=callback_group, joint_names=ARM_JOINTS + [FINGER_JOINT])
     executor = MoveItExecutor(
@@ -141,11 +196,24 @@ def build_stack(node, cfg, *, callback_group=None, status_topic='status',
         dry_run=cfg.dry_run,
         linear_step_m=cfg.linear_step_m,
         use_linear=cfg.use_linear_moves,
+        backend=cfg.motion_backend,
+        arm_action=cfg.arm_action,
+        joint_speed_rad_s=cfg.direct_joint_speed_rad_s,
     )
     executor.set_virtual_joints(cfg.home_joints)
+    # Gripper "bridge" đi qua CHÍNH move_group (move_joints group=interbotix_gripper)
+    # ⇒ ở backend 'direct' nó sẽ chết vì move_action không chạy. Direct mode phải
+    # dùng đường PWM trực tiếp + dò stall (Gripper._pwm) cho nhất quán.
+    use_gripper_bridge = bool(cfg.use_gripper_bridge)
+    if executor.backend == 'direct' and use_gripper_bridge:
+        node.get_logger().info(
+            'motion_backend=direct ⇒ gripper chuyển sang PWM trực tiếp '
+            '(use_gripper_bridge bị bỏ qua: đường bridge đi qua move_group). '
+            'Nhớ để set_gripper_pwm_mode=true để motor thực sự ở PWM mode.')
+        use_gripper_bridge = False
     gripper = Gripper(
         node, executor, js, publisher=publisher,
-        gripper_group=cfg.gripper_group, use_bridge=cfg.use_gripper_bridge,
+        gripper_group=cfg.gripper_group, use_bridge=use_gripper_bridge,
         finger_closed=cfg.finger_closed_m, finger_open=cfg.finger_open_m,
         empty_margin=cfg.grasp_empty_margin_m, settle_s=cfg.grasp_settle_s,
         velocity_scale=cfg.velocity_scale_delicate,

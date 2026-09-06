@@ -15,11 +15,28 @@ KHÔNG đạt chuẩn công nghiệp của bản cũ:
   4. Bản cũ mọi bước là joint-space goal ⇒ đoạn hạ xuống kẹp / cắm ống là đường
      cong trong không gian. Ở đây có move_linear_ee(): nội suy THẲNG trong không
      gian Descartes (IK từng waypoint) — chuẩn cho pha approach/insert/retract.
+
+HAI BACKEND CHẤP HÀNH (tham số `motion_backend`):
+
+  'moveit'  (mặc định) — gửi goal tới move_group: có OMPL tránh vật cản, có
+            planning scene, có attach/detach. Đổi lại: mỗi bước phải plan, và
+            planner có quyền TỪ CHỐI pose hợp lệ về hình học (scene sai một chút
+            là fail cả chuỗi).
+
+  'direct'  — bỏ qua move_group, bắn thẳng FollowJointTrajectory xuống
+            /rx150/arm_controller/follow_joint_trajectory (chính là
+            fuzzy_trajectory_bridge). Đường phần cứng KHÔNG đổi:
+            bridge → setpoint 100 Hz → fuzzy_node PWM → xs_sdk.
+            Đây là mô hình của bản pick-place đã chạy thật ở key_point
+            (bot.arm.set_ee_pose_components: IK → đi thẳng tới pose, không planner).
+            KHÔNG có tránh vật cản ⇒ an toàn nằm ở waypoint (staging pose, rút
+            thẳng đứng, cột trung chuyển trên giá) chứ không ở planner.
 """
 import math
 import threading
 import time
 
+from control_msgs.action import FollowJointTrajectory
 from moveit_msgs.action import ExecuteTrajectory, MoveGroup
 from moveit_msgs.msg import (
     Constraints, JointConstraint, MoveItErrorCodes, RobotTrajectory,
@@ -97,7 +114,10 @@ class MoveItExecutor:
                  callback_group=None, goal_tolerance_rad=0.01,
                  verify_tolerance_rad=0.06, planning_time_s=5.0,
                  execution_timeout_s=30.0, planning_attempts=5, retries=1,
-                 dry_run=False, linear_step_m=0.006, use_linear=True):
+                 dry_run=False, linear_step_m=0.006, use_linear=True,
+                 backend='moveit',
+                 arm_action='/rx150/arm_controller/follow_joint_trajectory',
+                 joint_speed_rad_s=0.6):
         self._node = node
         self._log = node.get_logger()
         self.kin = kin
@@ -113,11 +133,22 @@ class MoveItExecutor:
         self.dry_run = bool(dry_run)
         self.linear_step = float(linear_step_m)
         self.use_linear = bool(use_linear)
+        self.backend = str(backend).lower()
+        if self.backend not in ('moveit', 'direct'):
+            self._log.warn(f'motion_backend="{backend}" lạ — dùng "moveit".')
+            self.backend = 'moveit'
+        self.arm_action = str(arm_action)
+        self.joint_speed = max(0.05, float(joint_speed_rad_s))
 
         self._move = ActionClient(node, MoveGroup, 'move_action',
                                   callback_group=callback_group)
         self._exec = ActionClient(node, ExecuteTrajectory, 'execute_trajectory',
                                   callback_group=callback_group)
+        # backend 'direct': cùng action server mà MoveIt vẫn dùng để chấp hành
+        # ⇒ không thêm đường phần cứng mới, chỉ bỏ khâu lập kế hoạch.
+        self._fjt = (ActionClient(node, FollowJointTrajectory, self.arm_action,
+                                  callback_group=callback_group)
+                     if self.backend == 'direct' else None)
         self._handle_lock = threading.Lock()
         self._handle = None
         self._abort = threading.Event()
@@ -145,7 +176,7 @@ class MoveItExecutor:
         if handle is not None:
             try:
                 handle.cancel_goal_async()
-                self._log.warn('Đã gửi cancel tới goal MoveIt đang chạy.')
+                self._log.warn('Đã gửi cancel tới goal đang chạy.')
             except Exception as exc:                       # noqa: BLE001
                 self._log.warn(f'Cancel goal thất bại: {exc}')
 
@@ -160,7 +191,14 @@ class MoveItExecutor:
     def wait_ready(self, timeout=10.0):
         if self.dry_run:
             return True
-        if not self._move.wait_for_server(timeout_sec=timeout):
+        if self.backend == 'direct':
+            if not self._fjt.wait_for_server(timeout_sec=timeout):
+                self._log.error(
+                    f'{self.arm_action} chưa sẵn sàng — fuzzy_trajectory_bridge '
+                    'chưa chạy? (T1: ros2 launch rx150_fuzzy_controller '
+                    'fuzzy_moveit.launch.py)')
+                return False
+        elif not self._move.wait_for_server(timeout_sec=timeout):
             self._log.error(
                 "move_action chưa sẵn sàng — move_group chưa chạy? "
                 "(T1: ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py)")
@@ -225,8 +263,12 @@ class MoveItExecutor:
             if self._abort.is_set():
                 self._log.warn(f'{label}: bỏ qua vì E-stop.')
                 return False
-            code = self._send_move_goal(group, joint_names, targets,
-                                        velocity_scale, allowed_time)
+            if self.backend == 'direct' and group == self.arm_group:
+                code = self._send_direct_joint_goal(joint_names, targets,
+                                                    velocity_scale, label)
+            else:
+                code = self._send_move_goal(group, joint_names, targets,
+                                            velocity_scale, allowed_time)
             if code == MoveItErrorCodes.SUCCESS:
                 if not verify:
                     return True
@@ -252,6 +294,44 @@ class MoveItExecutor:
                 self._log.warn(f'{label}: thử lại ({attempt + 2}/{retries + 1}).')
                 time.sleep(0.3)
         return False
+
+    # ── backend 'direct': joint goal KHÔNG qua planner ──────────────────
+    def _send_direct_joint_goal(self, joint_names, targets, velocity_scale, label):
+        """Đi tới cấu hình khớp bằng 1 trajectory nội suy sẵn (không có OMPL).
+
+        Tương đương bot.arm.set_ee_pose_components() của SDK: tính thời gian đi
+        từ biên độ khớp LỚN NHẤT rồi trượt tuyến tính có ease-in/out. Khác SDK ở
+        chỗ vẫn đi qua bridge ⇒ vẫn có fuzzy PWM closed-loop bám setpoint.
+        """
+        current = self.current_joints()
+        if current is None:
+            self._log.error(f'{label}: chưa có joint_states — không dựng được '
+                            f'trajectory (topic {self.js.topic}).')
+            return MoveItErrorCodes.FAILURE
+        order = {n: i for i, n in enumerate(ARM_JOINTS)}
+        start = [current[order[n]] for n in joint_names]
+        traj = self._build_joint_traj(joint_names, start, targets, velocity_scale)
+        return (MoveItErrorCodes.SUCCESS if self._execute_traj(traj, label)
+                else MoveItErrorCodes.CONTROL_FAILED)
+
+    def _build_joint_traj(self, joint_names, start, targets, velocity_scale):
+        """Nội suy khớp start → targets, ease-in/out, đủ dày để bridge bám mượt."""
+        span = max((abs(b - a) for a, b in zip(start, targets)), default=0.0)
+        scale = max(0.01, min(1.0, float(velocity_scale)))
+        duration = max(0.6, span / (self.joint_speed * scale))
+        n = max(3, int(duration * 20) + 1)          # ~20 điểm/s
+        traj = JointTrajectory()
+        traj.joint_names = list(joint_names)
+        for k in range(n):
+            frac = 0.5 * (1.0 - math.cos(math.pi * k / (n - 1)))
+            pt = JointTrajectoryPoint()
+            pt.positions = [float(a + (b - a) * frac)
+                            for a, b in zip(start, targets)]
+            t = duration * k / (n - 1)
+            pt.time_from_start.sec = int(t)
+            pt.time_from_start.nanosec = int((t - int(t)) * 1e9)
+            traj.points.append(pt)
+        return traj
 
     def _send_move_goal(self, group, joint_names, targets, velocity_scale, allowed_time):
         """Trả error_code (int). FAILURE nếu không gửi/nhận được kết quả."""
@@ -394,6 +474,55 @@ class MoveItExecutor:
         return traj
 
     def _execute_traj(self, traj: JointTrajectory, label):
+        """Chấp hành 1 JointTrajectory đã dựng sẵn — cùng chữ ký cho 2 backend."""
+        if self.backend == 'direct':
+            return self._execute_traj_fjt(traj, label)
+        return self._execute_traj_moveit(traj, label)
+
+    def _execute_traj_fjt(self, traj: JointTrajectory, label):
+        """Gửi thẳng xuống fuzzy_trajectory_bridge (không qua move_group)."""
+        if not self._fjt.wait_for_server(timeout_sec=2.0):
+            self._log.error(f'{label}: {self.arm_action} chưa sẵn sàng.')
+            return False
+        goal = FollowJointTrajectory.Goal()
+        goal.trajectory = traj
+        goal_future = self._fjt.send_goal_async(goal)
+        if not self._wait(goal_future, timeout=5.0):
+            return False
+        handle = goal_future.result()
+        if handle is None or not handle.accepted:
+            self._log.error(f'{label}: bridge từ chối goal.')
+            return False
+        with self._handle_lock:
+            self._handle = handle
+        try:
+            duration = (traj.points[-1].time_from_start.sec
+                        + traj.points[-1].time_from_start.nanosec * 1e-9)
+            res_future = handle.get_result_async()
+            if not self._wait(res_future, timeout=duration + self.exec_timeout):
+                return False
+            res = res_future.result()
+            if res is None or res.result is None:
+                self._log.error(f'{label}: bridge trả kết quả rỗng.')
+                return False
+            code = int(res.result.error_code)
+            if code == FollowJointTrajectory.Result.SUCCESSFUL:
+                return True
+            # Bridge báo GOAL_TOLERANCE_VIOLATED là chuyện thường với PWM fuzzy;
+            # verify_reached ở move_joints/move_linear_ee mới là trọng tài.
+            self._log.warn(f'{label}: bridge trả error_code={code} '
+                           f'({res.result.error_string or "không rõ"}).')
+            ok, worst = self.verify_reached(list(traj.joint_names),
+                                            list(traj.points[-1].positions))
+            if ok:
+                self._log.warn(f'{label}: nhưng pose thực tế đã đạt '
+                               f'(sai số {math.degrees(worst):.2f}°) → chấp nhận.')
+            return ok
+        finally:
+            with self._handle_lock:
+                self._handle = None
+
+    def _execute_traj_moveit(self, traj: JointTrajectory, label):
         if not self._exec.wait_for_server(timeout_sec=2.0):
             self._log.warn('execute_trajectory chưa sẵn sàng — tắt chế độ đi thẳng.')
             self._linear_unavailable = True

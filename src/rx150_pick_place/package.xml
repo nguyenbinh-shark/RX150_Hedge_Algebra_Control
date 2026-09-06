@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_pick_place</name>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
   <description>rx150 Layer 2 — QUYẾT ĐỊNH: đọc nhận diện YOLO + cử chỉ tay → gọi MoveIt (move_action) gắp &amp; thả. Gồm thư viện dùng chung (IK giải tích 5-DoF, chấp hành MoveIt có verify, gripper có xác nhận kẹp, planning scene attach/detach) + 2 task node.</description>
   <maintainer email="todo@todo.todo">hust</maintainer>
   <license>BSD</license>
@@ -17,6 +17,7 @@
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>shape_msgs</exec_depend>
   <exec_depend>trajectory_msgs</exec_depend>
+  <exec_depend>control_msgs</exec_depend>
   <exec_depend>moveit_msgs</exec_depend>
   <exec_depend>interbotix_xs_msgs</exec_depend>
 
@@ -25,6 +26,9 @@
 
   <!-- Launch include yolo_tube_detector_node (Layer 1) -->
   <exec_depend>rx150_perception</exec_depend>
+
+  <!-- rx150_reach_check.py đọc YAML khi chạy với cờ config (offline, không cần robot) -->
+  <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>python3-pytest</test_depend>

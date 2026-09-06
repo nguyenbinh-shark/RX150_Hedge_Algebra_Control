@@ -1,10 +1,18 @@
 # Layer 1 (YOLO tube detector) + Layer 2 (pick-place theo cử chỉ tay qua MoveIt).
 #
-# Yêu cầu T1 đã chạy (motion stack + camera + hand-eye):
+# Yêu cầu T1 + T2 đã chạy (motion stack + camera, RỒI perception phát TF calib):
+#   ./rx150.sh t1   &&   ./rx150.sh t2
+# tương đương:
 #   ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
-#       use_camera:=true use_camera_static_tf:=false use_handeye_publisher:=true
+#       use_camera:=true use_camera_static_tf:=false use_handeye_publisher:=false
+#   ros2 launch rx150_perception rx150_perception.launch.py use_camera:=false
 #
-# Chạy T2:
+# TF `world <-> camera` CHỈ do static_trans_pub của rx150_perception phát.
+# fuzzy_moveit.launch.py KHÔNG chạy node đó, và use_handeye_publisher:=true cần
+# ~/.ros/easy_handeye2/rx150_eob.yaml (chưa có). Thiếu TF ⇒ YOLO im lặng.
+# Kiểm: ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link
+#
+# Chạy T3:
 #   ros2 launch rx150_pick_place pick_place.launch.py
 #   ros2 launch rx150_pick_place pick_place.launch.py dry_run:=true     # không động cơ
 #   ros2 launch rx150_pick_place pick_place.launch.py enable_detector:=false
@@ -54,11 +62,18 @@ def generate_launch_description():
             'roi_params_file', default_value=PathJoinSubstitution([
                 FindPackageShare('rx150_perception'), 'config',
                 'roi_box_params.yaml']),
-            description='Hộp giới hạn vùng nhận diện (toạ độ base_link). Nạp SAU '
-                        'yolo_params_file nên các khoá roi_* ở đây thắng.'),
+            description='Hộp giới hạn vùng nhận diện (toạ độ base_link). Truyền dạng '
+                        'THAM SỐ roi_params_file: node tự mở file này rồi '
+                        'set_parameters(), nên các khoá roi_* ở đây LUÔN thắng '
+                        'params-file. Đặt \'none\' để ROI đến từ yolo_params_file/CLI.'),
         DeclareLaunchArgument(
             'dry_run', default_value='false',
             description='true = chỉ lập kế hoạch + log, KHÔNG gửi goal tới robot.'),
+        DeclareLaunchArgument(
+            'motion_backend', default_value='moveit',
+            description='moveit = qua move_group (OMPL + planning scene). '
+                        'direct = bắn thẳng FollowJointTrajectory xuống '
+                        'fuzzy_trajectory_bridge, KHÔNG planner (mô hình key_point).'),
 
         # ---- Layer 1: YOLO tube detector ----
         Node(
@@ -68,8 +83,15 @@ def generate_launch_description():
             output='screen',
             # Cùng bộ params mà fuzzy_moveit_perception.launch.py dùng — chạy detector
             # ở đây hay ở T1 thì hành vi nhận diện phải y hệt.
-            parameters=[LaunchConfiguration('yolo_params_file'),
-                        LaunchConfiguration('roi_params_file')],
+            #
+            # roi_params_file đi vào dạng THAM SỐ (dict), không phải params-file: node
+            # tự mở file trỏ bởi tham số đó rồi set_parameters(), nên đường tự-nạp LUÔN
+            # thắng params-file. Truyền file ROI như params-file thì `roi_params_file:=`
+            # tuỳ chỉnh sẽ bị chính default của node ghi đè, im lặng.
+            parameters=[
+                LaunchConfiguration('yolo_params_file'),
+                {'roi_params_file': LaunchConfiguration('roi_params_file')},
+            ],
             condition=IfCondition(enable_detector),
         ),
 
@@ -91,6 +113,8 @@ def generate_launch_description():
             executable='pick_place_moveit_node.py',
             name='pick_place_moveit',
             output='screen',
-            parameters=[params_file, {'dry_run': dry_run}],
+            parameters=[params_file,
+                        {'dry_run': dry_run,
+                         'motion_backend': LaunchConfiguration('motion_backend')}],
         ),
     ])

@@ -12,8 +12,21 @@
     base_frame: rx150/base_link
     joint_states_topic: /rx150/joint_states
     dry_run: false              # true = chỉ lập kế hoạch + log, KHÔNG gửi goal
+    motion_backend: moveit      # moveit = qua move_group (OMPL + planning
+                                #          scene, tránh vật cản)
+                                # direct = bắn thẳng FollowJointTrajectory
+                                #          xuống fuzzy_trajectory_bridge,
+                                #          KHÔNG planner (mô hình key_point)
+    arm_action: /rx150/arm_controller/follow_joint_trajectory
+    direct_joint_speed_rad_s: 0.6
 
     # ══ tư thế ══════════════════════════════════════════════════════════
+    # Tư thế TRUNG CHUYỂN (x, y, z, pitch) — "fake home pose" của key_point.
+    # Thu gọn và nằm SAU LƯNG giá. home_joints bên dưới được TÍNH LẠI từ đây
+    # bằng IK lúc khởi động (log ra góc thật); đặt home_xyz_pitch: [] để dùng
+    # home_joints thô. ĐỪNG để home_joints [0,0,0,0,0]: FK của nó là
+    # (0.359, 0, 0.255) — tay duỗi thẳng VƯỢT QUA giá ở x = 0.26.
+    home_xyz_pitch: [0.18, 0.0, 0.18, 0.0]
     home_joints: [0.0, 0.0, 0.0, 0.0, 0.0]
     # Ladder pitch khi gắp: thử chúc thẳng đứng trước, hụt thì nghiêng dần.
     # rx150 KHÔNG chúc 90° được ở r ≳ 0.29 m — xem bảng của rx150_reach_check.
@@ -25,6 +38,10 @@
     approach_delta: 0.06        # độ cao pre-grasp phía trên điểm kẹp
     grasp_z_offset: 0.0         # hạ thêm dưới TÂM vật (> 0 = xuống sâu hơn)
     retract_height: 0.08        # rút thẳng đứng bao nhiêu sau khi nhả
+    retreat_back_m: 0.05        # lùi theo bán kính sau khi rút thẳng
+                                # (key_point: x−0.05 rồi mới về home)
+    via_staging: true           # ghé cột thẳng đứng trên tư thế trung
+                                # chuyển trước khi vươn ra chỗ thả/giá
     min_ee_z: 0.015             # CHẶN CỨNG: ee không bao giờ xuống thấp hơn
     object_length: 0.10         # kích thước vật (để attach vào planning scene)
     object_radius: 0.0085

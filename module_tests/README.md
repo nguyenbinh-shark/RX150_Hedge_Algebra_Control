@@ -11,6 +11,10 @@ RX150. File `COLCON_IGNORE` giúp `colcon` bỏ qua thư mục này khi dò ROS 
 - `hardware/`: kiểm tra riêng camera, motor, gripper và thiết bị ngoại vi.
 - `common/`: mã tiện ích dùng chung cho nhiều bài test.
 
+> `run_test.py` chỉ dò 4 nhóm `fuzzy_controller`, `perception`, `moveit`,
+> `hardware` (hằng `GROUPS`). File đặt ngoài các thư mục đó sẽ không hiện trong
+> `--list`.
+
 Mỗi bài test nên chỉ kiểm tra một chức năng và tự kiểm tra điều kiện đầu vào trước
 khi tác động lên phần cứng. Không đặt model, rosbag hoặc log dung lượng lớn vào đây;
 hãy đặt chúng trong `test_data/` và `test_results/` ở workspace root nếu cần.
@@ -20,10 +24,35 @@ hãy đặt chúng trong `test_data/` và `test_results/` ở workspace root n�
 Sau khi build và source workspace:
 
 ```bash
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+source ~/interbotix_ws/source_all.sh
 python3 module_tests/run_test.py --list
 python3 module_tests/run_test.py perception/example_import_test.py
+```
+
+## Bộ smoke-test theo tầng (dùng khi bring-up phần cứng)
+
+Ba bài dưới đây bám đúng thang bậc của
+[`rx150_pick_place/docs/RUNBOOK.md`](../src/rx150_pick_place/docs/RUNBOOK.md).
+Không bài nào phát lệnh tới robot — chỉ nghe và hỏi discovery. Exit 0 = GO.
+
+```bash
+python3 module_tests/run_test.py hardware/joint_states_test.py        # B1
+python3 module_tests/run_test.py moveit/action_servers_test.py        # B1 / B5
+python3 module_tests/run_test.py perception/tf_and_detection_test.py  # B2 / B3
+```
+
+Khi NO-GO, mỗi bài in ra **nguyên nhân gốc + lệnh kiểm tiếp theo**, không chỉ
+"failed". Vài tuỳ chọn hay dùng:
+
+```bash
+# ngưỡng tần số riêng (mặc định FAIL nếu < 50 Hz, danh nghĩa 100)
+python3 module_tests/run_test.py hardware/joint_states_test.py -- --seconds 5 --min-hz 80
+
+# backend direct chỉ cần arm + driver; move_group/scene thiếu chỉ là WARN
+python3 module_tests/run_test.py moveit/action_servers_test.py -- --backend direct
+
+# bàn đang trống thì PoseArray rỗng là bình thường
+python3 module_tests/run_test.py perception/tf_and_detection_test.py -- --allow-empty
 ```
 
 Xem camera và kết quả nhận diện YOLO trực tiếp:

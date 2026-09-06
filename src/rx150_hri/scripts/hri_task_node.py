@@ -9,7 +9,7 @@ Node KHÔNG biết MoveIt/robot — mọi chuyển động gửi qua executor hr
 Phát triển TỪNG BƯỚC (param `mode`):
   fixed  (BƯỚC 1 — đã làm) : gắp tại điểm cố định (pick_*) → nhả tại điểm cố định (place_*).
                              Không cần camera.
-  camera (BƯỚC 2 — tới)    : đọc /yolo/detected_objects (PoseArray base frame từ
+  camera (BƯỚC 2 — tới)    : đọc /yolo/detected_tubes (PoseArray base frame từ
                              rx150_perception) → chọn vật ổn định gần base nhất → gắp,
                              nhả tại place_*.
   (B3: gesture chọn vật qua /hand_gesture/*; B4: handover + RViz markers.)

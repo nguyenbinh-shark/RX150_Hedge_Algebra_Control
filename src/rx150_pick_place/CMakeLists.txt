@@ -47,6 +47,12 @@ if(BUILD_TESTING)
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
   )
+  # Công thức chuyển động áp từ key_point: tư thế trung chuyển, trajectory
+  # joint-space của backend 'direct', hình học lùi + cột trung chuyển.
+  ament_add_pytest_test(test_motion_recipe test/test_motion_recipe.py
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}
+  )
 endif()
 
 ament_package()

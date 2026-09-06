@@ -421,8 +421,14 @@ class TubeRackNode(Node):
         # --- kế hoạch cắm (TRƯỚC khi kẹp: hỏng thì chưa cầm gì trong tay) ---
         (ix, iy, iz), tilt = self._insert_pose(slot)
         ladder = self._place_ladder(tilt)
-        hover = self.skill.plan_pose(ix, iy, iz + float(self.cfg.hover_clearance),
-                                     ladder, seed=grasp.lift.joints, label='HOVER')
+        hover_z = iz + float(self.cfg.hover_clearance)
+        # Ghé cột thẳng đứng trên tư thế trung chuyển TRƯỚC khi vươn ra giá
+        # (key_point: (0.18, 0, z+0.08)) ⇒ đoạn quét ngang không đi qua đầu các
+        # ống đã cắm. via=None thì chuỗi vẫn chạy, chỉ mất lớp bảo hiểm này.
+        via = self.skill.plan_via(hover_z, seed=grasp.lift.joints, label='VIA-GIÁ')
+        hover = self.skill.plan_pose(ix, iy, hover_z, ladder,
+                                     seed=(via.joints if via else grasp.lift.joints),
+                                     label='HOVER')
         insert = None
         if hover is not None:
             insert = self.skill.plan_pose(ix, iy, iz, [hover.pitch], wrist=hover.wrist,
@@ -433,13 +439,13 @@ class TubeRackNode(Node):
                 f'{self.stack.kin.reach_report(ix, iy, iz, tilt)}')
             return False
         self.get_logger().info(
-            f'  Kế hoạch: {self.skill.describe(grasp.pre, grasp.grasp, grasp.lift, hover, insert)} '
+            f'  Kế hoạch: {self.skill.describe(grasp.pre, grasp.grasp, grasp.lift, via, hover, insert)} '
             f'→ slot {slot}')
 
         # --- chấp hành ---
         if not self.skill.grasp_at(grasp):
             return False
-        if not self.skill.release_at(insert, hover=hover, state=State.INSERT):
+        if not self.skill.release_at(insert, hover=hover, via=via, state=State.INSERT):
             return False
 
         self._slot_occupied[slot] = True

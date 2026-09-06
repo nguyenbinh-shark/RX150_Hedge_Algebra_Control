@@ -18,3 +18,13 @@ __pycache__/
 
 # Added test_detection/*.log and profile/ to gitignore
 src/moveit_visual_tools
+
+# Dữ liệu chạy thật: bag + gói chẩn đoán (tools/record_pickplace.sh, collect_diag.sh)
+/bags/
+/diag_*/
+/diag_*.tar.gz
+frames.pdf
+frames.gv
+
+# Claude Code machine-local settings
+.claude/settings.local.json
