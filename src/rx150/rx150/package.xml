@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>rx150</name>
+  <version>0.3.0</version>
+  <description>Metapackage RX150 — kéo về toàn bộ package của dự án: 3 bộ điều khiển
+    (Control), 3 package hỗ trợ (Application Support) và 2 ứng dụng (Application).
+    Dùng để `rosdep install --from-paths src` lấy đúng bộ phụ thuộc trong một lần.</description>
+  <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
+  <license>BSD</license>
+  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- Control layer -->
+  <exec_depend>rx150_fuzzy_controller</exec_depend>
+  <exec_depend>rx150_ff_controller</exec_depend>
+  <exec_depend>rx150_hac_controller</exec_depend>
+
+  <!-- Application Support layer -->
+  <exec_depend>rx150_modules</exec_depend>
+  <exec_depend>rx150_motion_common</exec_depend>
+  <exec_depend>rx150_perception</exec_depend>
+
+  <!-- Application layer -->
+  <exec_depend>rx150_pick_place</exec_depend>
+  <exec_depend>rx150_hri</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

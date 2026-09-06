@@ -8,7 +8,7 @@ Mỗi bậc có tiêu chí GO/NO-GO và lệnh thu bằng chứng. Đừng nhả
 debug bị mất là do chạy B6 rồi mới phát hiện B2 chưa GO.
 
 Tài liệu liên quan: [`../README.md`](../README.md) (kiến trúc + tham số),
-[`rx150_perception/docs/PERCEPTION_GUIDE.md`](../../rx150_perception/docs/PERCEPTION_GUIDE.md)
+[`rx150_perception/docs/PERCEPTION_GUIDE.md`](../../../rx150_toolbox/rx150_perception/docs/PERCEPTION_GUIDE.md)
 (nhận diện + hiệu chuẩn TF, có nhật ký sự cố).
 
 ---

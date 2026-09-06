@@ -2,9 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_hac_controller</name>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <description>Linear HAC controller with Ruckig trajectory profiling and Pinocchio gravity compensation for the Interbotix rx150 arm.</description>
-  <maintainer email="todo@todo.todo">hust</maintainer>
+  <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
+  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
   <license>BSD</license>
 
   <exec_depend>rx150_motion_common</exec_depend>

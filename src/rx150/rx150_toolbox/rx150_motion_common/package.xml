@@ -2,10 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_motion_common</name>
-  <version>1.0.0</version>
+  <version>0.3.0</version>
   <description>Common infrastructure &amp; tools for rx150 motion controllers (fuzzy + ff): trajectory bridge, tuning GUI, motor config, sensors_3d, env-hooks. KHÔNG có lib C++ — mỗi controller compile engine riêng.</description>
-  <maintainer email="nguyenbinh@example.com">nguyenbinh</maintainer>
-  <license>MIT</license>
+  <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
+  <license>BSD</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

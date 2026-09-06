@@ -2,9 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_pick_place</name>
-  <version>0.2.1</version>
+  <version>0.3.0</version>
   <description>rx150 Layer 2 — QUYẾT ĐỊNH: đọc nhận diện YOLO + cử chỉ tay → gọi MoveIt (move_action) gắp &amp; thả. Gồm thư viện dùng chung (IK giải tích 5-DoF, chấp hành MoveIt có verify, gripper có xác nhận kẹp, planning scene attach/detach) + 2 task node.</description>
-  <maintainer email="todo@todo.todo">hust</maintainer>
+  <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
+  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
   <license>BSD</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>

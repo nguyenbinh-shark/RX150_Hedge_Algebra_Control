@@ -17,7 +17,7 @@ Package này cung cấp hệ thống điều khiển mờ (Fuzzy Logic Controlle
    - Ứng dụng `rx150_tuning_gui.py` (Tkinter, ở `rx150_motion_common`) cho phép tinh chỉnh Gains ($K_e, K_{ed}, K_u, u_{max}$) theo thời gian thực (Live-tuning) và lưu cấu hình trực tiếp vào YAML.
 6. **Kiểm thử an toàn & Trực quan hoá**:
    - Cung cấp script test độc lập cho khớp 5 (không chịu tải) để tìm Gain an toàn.
-   - Hỗ trợ thu thập dữ liệu ROS 2 bag để so sánh A/B. Trực quan hoá realtime và offline qua module dùng chung [data_analysis/](../../data_analysis/).
+   - Hỗ trợ thu thập dữ liệu ROS 2 bag để so sánh A/B. Trực quan hoá realtime và offline qua module dùng chung [data_analysis/](../../../../data_analysis/).
 
 ## Cấu trúc thư mục (Packages)
 
@@ -49,7 +49,7 @@ Hoặc dùng wrapper ở gốc workspace, vốn đã đặt sẵn tổ hợp c�
 > ⚠️ `fuzzy_node` bật torque + PWM **ngay khi launch** và lái tay về tư thế sleep
 > `[0, −1.80, 1.55, 0.8, 0]` bằng một **bước nhảy** (launch ép `enable_profile: False`).
 > Chạy `pkill -f xs_sdk` trước, dọn thoáng quanh robot.
-> Quy trình bring-up đầy đủ: [`rx150_pick_place/docs/RUNBOOK.md`](../rx150_pick_place/docs/RUNBOOK.md).
+> Quy trình bring-up đầy đủ: [`rx150_pick_place/docs/RUNBOOK.md`](../../apps/rx150_pick_place/docs/RUNBOOK.md).
 
 *(Camera đã nằm trong launch này — `use_camera` mặc định `true`. Không chạy thêm
 `realsense2_camera` ở terminal khác: hai driver cùng mở một thiết bị sẽ báo
@@ -69,7 +69,7 @@ của package này còn ở `ros2 run rx150_fuzzy_controller rx150_fuzzy_gui.py`
 
 ### 3. Trực quan hoá & Giám sát dữ liệu (PlotJuggler)
 
-Hệ thống cung cấp sẵn XML layout dùng chung và các script ghi dữ liệu trong module [data_analysis/](../../data_analysis/).
+Hệ thống cung cấp sẵn XML layout dùng chung và các script ghi dữ liệu trong module [data_analysis/](../../../../data_analysis/).
 
 #### Mở PlotJuggler với Layout cấu hình sẵn:
 ```bash
@@ -85,8 +85,8 @@ ros2 run plotjuggler plotjuggler -l ~/interbotix_ws/data_analysis/layouts/fuzzy_
 | `/rx150/fuzzy/edot` | `sensor_msgs/msg/JointState` | Đạo hàm sai số ($\dot{e} = \dot{q}_{ref} - \dot{q}$) |
 | `/rx150/fuzzy/effort` | `sensor_msgs/msg/JointState` | Xung PWM điều khiển ($u$) và Momen bù trọng lực |
 
-> Xem tài liệu chi tiết về quy trình Live Streaming, nạp ROS Bag offline, export CSV và vẽ đồ thị xuất bản tại [data_analysis/README.md](../../data_analysis/README.md).
+> Xem tài liệu chi tiết về quy trình Live Streaming, nạp ROS Bag offline, export CSV và vẽ đồ thị xuất bản tại [data_analysis/README.md](../../../../data_analysis/README.md).
 
 
 ## Thông tin chi tiết
-Để xem hướng dẫn chuyên sâu về việc thiết kế luật mờ, cách sinh mã C từ FIS, kiểm thử an toàn từng khớp và so sánh hiệu suất qua bag file, vui lòng đọc tài liệu hướng dẫn kỹ thuật: [huong_dan_chi_tiet_blog.md](../../huong_dan_chi_tiet_blog.md).
+Để xem hướng dẫn chuyên sâu về việc thiết kế luật mờ, cách sinh mã C từ FIS, kiểm thử an toàn từng khớp và so sánh hiệu suất qua bag file, vui lòng đọc tài liệu hướng dẫn kỹ thuật: [huong_dan_chi_tiet_blog.md](../../../../docs/huong_dan_chi_tiet.md).

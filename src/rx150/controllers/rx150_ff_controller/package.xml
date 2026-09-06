@@ -2,9 +2,10 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>rx150_ff_controller</name>
-  <version>0.1.0</version>
+  <version>0.3.0</version>
   <description>Controller rx150 song song fuzzy_node: fuzzy PD + feedforward vận tốc/gia tốc từ profile Ruckig (KHÔNG bù trọng lực).</description>
-  <maintainer email="todo@todo.todo">hust</maintainer>
+  <maintainer email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</maintainer>
+  <author email="trannguyenbinh.shark@gmail.com">Tran Nguyen Binh</author>
   <license>BSD</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
