@@ -2,7 +2,9 @@
 
 1 package = 1 chức năng: **toàn bộ logic đọc nhận diện + xử lý + lựa chọn + định trình
 tự** nằm trong `hri_task_node`; đầu ra của chức năng = **lệnh vị trí arm cần đến +
-kẹp/nhả** gửi qua topic cho executor `hri_motion_node` (MoveIt + IK-oracle + gripper).
+kẹp/nhả** gửi qua topic cho executor `hri_motion_node` — một lớp mỏng đặt trên
+[`rx150_modules`](../../rx150_toolbox/rx150_modules/README.md) (IK giải tích, MoveIt
+executor có verify, gripper có xác nhận kẹp, planning scene).
 
 ```text
 rx150_perception (giữ nguyên)                 rx150_hri
@@ -14,9 +16,11 @@ rx150_perception (giữ nguyên)                 rx150_hri
                                                  ├─► /hri/set_vel_scale(Float32: 0.05..1)
                                                  └─◄ /hri/status       ("POSE_DONE #12" …)
                                                  │
-                                            hri_motion_node (executor: MoveIt qua 'move_action',
-                                                             IK-oracle SDK execute=False,
-                                                             gripper bridge / PWM fallback)
+                                            hri_motion_node (executor mỏng)
+                                                 │
+                                            rx150_modules (IK giải tích, MoveItExecutor
+                                                           có verify, Gripper xác nhận kẹp,
+                                                           SceneManager)
 ```
 
 - `hri_task` KHÔNG biết MoveIt; `hri_motion` KHÔNG biết detection → test từng lớp riêng
@@ -89,7 +93,22 @@ có `seq > seq đã thấy` (timeout `status_timeout_s`).
 
 ## Ghi chú
 
-- Primitive motion port từ `rx150_pick_place/scripts/pick_place_moveit_node.py` (bản đã
-  chạy ổn) — **SAU khi rx150_hri chạy ổn trên máy thật sẽ `git rm -r src/rx150_pick_place`**
-  (đã kiểm tra: không code nào khác phụ thuộc package cũ).
+- Primitive chuyển động **không** còn nằm trong package này: chúng ở
+  [`rx150_modules`](../../rx150_toolbox/rx150_modules/README.md) và dùng chung với
+  `rx150_pick_place`. Thiếu primitive nào thì thêm vào đó, đừng thêm vào đây.
+  (Ghi chú cũ "sẽ `git rm -r src/rx150_pick_place`" đã bỏ: hai app cùng tồn tại, phần
+  trùng nhau đã rút lên thư viện chung.)
+- Ba điểm khác so với bản executor cũ tự viết primitive:
+  1. IK giải tích thay cho IK-oracle của SDK (`mr.IKinSpace` lặp Newton với 3 seed cố
+     định ⇒ fail ngẫu nhiên ở điểm biên). Node không còn cần `InterbotixManipulatorXS`.
+  2. Chuyển động được **verify đã tới đích thật**, không chỉ tin `error_code`.
+  3. `GRIP_DONE` giờ có nghĩa là **thực sự kẹp được vật** (đo `left_finger`). Diễn thử
+     không có vật thì đặt `verify_grasp: false`.
 - Smoke test helper thuần: `python3 module_tests/run_test.py perception/hri_helpers_test.py`.
+- Test executor không cần robot:
+  ```bash
+  ros2 run rx150_hri hri_motion_node.py --ros-args \
+      --params-file $(ros2 pkg prefix rx150_hri)/share/rx150_hri/config/hri_params.yaml \
+      -p dry_run:=true -p set_gripper_pwm_mode:=false
+  # terminal khác: ros2 topic echo /hri/status  +  ros2 topic pub /hri/cmd_pose …
+  ```

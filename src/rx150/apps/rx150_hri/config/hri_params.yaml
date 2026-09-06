@@ -26,14 +26,22 @@
     # ---- Velocity scaling MoveIt (0..1) ----
     velocity_scale_cruise: 0.3
     velocity_scale_delicate: 0.1    # descend/place (chậm, an toàn)
-    # ---- Executor (hri_motion) ----
+    # ---- Executor (hri_motion — dựng trên rx150_modules) ----
     allowed_time_s: 5.0         # s — plan+execute mỗi lệnh pose
     cmd_queue_depth: 4
+    idle_heartbeat_s: 2.0       # s — chu kỳ phát status IDLE khi rảnh
     home_joints: [0.0, -1.80, 1.55, 0.8, 0.0]
+    # false = dùng home_joints thô ở trên; true = khai home bằng toạ độ qua
+    # home_xyz_pitch (rx150_modules sẽ IK ra home_joints).
+    use_home_xyz_pitch: false
     # ---- Gripper ----
     # true  = qua MoveIt gripper_trajectory_bridge (stall-aware, giữ lực khi vận chuyển) — khuyến nghị
     # false = raw PWM JointSingleCommand (fallback)
     use_gripper_bridge: true
+    # true = Gripper.close() ĐO left_finger để xác nhận có vật trong ngón; kẹp trượt
+    # sẽ trả GRIP_FAILED thay vì GRIP_DONE. Đặt false khi diễn thử không có vật.
+    verify_grasp: true
+    set_gripper_pwm_mode: true  # đưa motor gripper về PWM mode lúc khởi động
     # ---- Collision: box bàn (ADD planning scene) ----
     add_table_collision: true
     table_x: 0.30
