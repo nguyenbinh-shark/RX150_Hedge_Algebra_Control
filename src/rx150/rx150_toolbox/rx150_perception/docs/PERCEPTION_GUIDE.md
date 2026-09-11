@@ -85,7 +85,7 @@ flowchart TD
 
 ### 2.0 Cách nhanh: chạy tất cả trên MỘT terminal
 ```bash
-source ~/interbotix_ws/install/setup.bash
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
 ros2 launch rx150_fuzzy_controller fuzzy_moveit_perception.launch.py
 ```
 File launch này gộp sẵn Terminal 1 + 2 + 3 bên dưới: `use_camera:=true`, camera static TF +
@@ -196,7 +196,7 @@ ros2 launch rx150_fuzzy_controller fuzzy_moveit_perception.launch.py \
 ### 2.1 Khởi động Robot, MoveIt và Camera
 Mở **Terminal 1**:
 ```bash
-source ~/interbotix_ws/install/setup.bash
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
 ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
     use_camera:=true \
     rs_camera_pointcloud_enable:=true \
@@ -216,7 +216,7 @@ ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
 ### 2.2 Khởi động Perception Pipeline & Hiệu chuẩn TF
 Mở **Terminal 2**:
 ```bash
-source ~/interbotix_ws/install/setup.bash
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
 ros2 launch rx150_perception rx150_perception.launch.py \
     use_pointcloud_tuner_gui:=true \
     use_armtag_tuner_gui:=true \
@@ -260,8 +260,8 @@ Trên cửa sổ **PointCloud Tuner GUI** và RViz:
 ### 2.4 Chạy Demo Tự Động Gắp Thả *(nhánh PCL — legacy)*
 Demo này đọc cụm từ `pc_filter`, nên phải bật nhánh PCL như mục 2.3. Mở **Terminal 3**:
 ```bash
-source ~/interbotix_ws/install/setup.bash
-cd ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
+cd ~/RX150_Hedge_Algebra_Control/src/rx150/rx150_toolbox/rx150_perception/demos
 python3 pick_place.py
 ```
 *(Script sẽ tự động quét tọa độ các cụm vật thể từ PointCloud và điều khiển tay gắp thả lần lượt từng vật).*
@@ -270,8 +270,8 @@ python3 pick_place.py
 
 ### 2.5 Demo Phân Loại Ống Nghiệm Theo Màu (nhánh YOLO)
 ```bash
-source ~/interbotix_ws/install/setup.bash
-python3 ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos/sort_tubes_by_color.py
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
+python3 ~/RX150_Hedge_Algebra_Control/src/rx150/rx150_toolbox/rx150_perception/demos/sort_tubes_by_color.py
 ```
 Đây là nhánh **xử lý ảnh** (YOLOv8 segmentation), không dùng PointCloud/pc_filter:
 

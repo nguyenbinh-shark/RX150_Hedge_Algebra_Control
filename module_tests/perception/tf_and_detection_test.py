@@ -55,7 +55,7 @@ def main() -> int:
         import rclpy.time
     except ImportError as exc:
         print(f"FAIL: không import được rclpy/tf2_ros ({exc}).")
-        print("      Hãy 'source ~/interbotix_ws/source_all.sh' trước.")
+        print("      Hãy 'source source_all.sh' trước.")
         return 1
 
     rclpy.init()

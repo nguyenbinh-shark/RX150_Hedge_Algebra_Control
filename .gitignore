@@ -21,6 +21,7 @@ __pycache__/
 .vscode/*.db*
 .claude/settings.local.json
 
+
 # ── Dữ liệu chạy thật: bag + gói chẩn đoán (tools/record_pickplace.sh, collect_diag.sh)
 /bags/
 /diag_*/

@@ -67,7 +67,7 @@ colcon build --packages-select rx150_hac_controller --symlink-install
 ros2 launch rx150_hac_controller hac_control.launch.py     gains_file:=rx150_hac_gains_safe.yaml gravity_model_file:=rx150_gravity_model.yaml
 
 # B3 — đối chiếu, không cần động cơ
-ros2 run rx150_motion_common rx150_gravity_id.py validate     --model src/rx150/controllers/rx150_hac_controller/config/rx150_gravity_model.yaml     --data ~/interbotix_ws/tuning_runs/gravity_identify_*/identify_data.csv
+ros2 run rx150_motion_common rx150_gravity_id.py validate     --model src/rx150/controllers/rx150_hac_controller/config/rx150_gravity_model.yaml     --data ~/RX150_Hedge_Algebra_Control/tuning_runs/gravity_identify_*/identify_data.csv
 ```
 
 `enable_gravity_comp`, `gravity_sign`, `gravity_model_source` **chỉ đọc lúc khởi tạo** —

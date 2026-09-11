@@ -1,12 +1,12 @@
 {
     "ROS2.distro": "humble",
     "python.autoComplete.extraPaths": [
-        "/home/hust/interbotix_ws/install/interbotix_xs_modules/lib/python3.10/site-packages",
-        "/home/hust/interbotix_ws/install/interbotix_perception_modules/lib/python3.10/site-packages",
-        "/home/hust/interbotix_ws/install/interbotix_xs_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_perception_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_moveit_interface_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_common_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_xs_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_perception_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_xs_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_perception_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_moveit_interface_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_common_modules/lib/python3.10/site-packages",
         "/home/hust/apriltag_ws/install/apriltag_ros/local/lib/python3.10/dist-packages",
         "/home/hust/ros2_ws/install/ur_robot_driver/local/lib/python3.10/dist-packages",
         "/home/hust/ros2_ws/install/ur_moveit_config/local/lib/python3.10/dist-packages",
@@ -20,12 +20,12 @@
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
     "python.analysis.extraPaths": [
-        "/home/hust/interbotix_ws/install/interbotix_xs_modules/lib/python3.10/site-packages",
-        "/home/hust/interbotix_ws/install/interbotix_perception_modules/lib/python3.10/site-packages",
-        "/home/hust/interbotix_ws/install/interbotix_xs_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_perception_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_moveit_interface_msgs/local/lib/python3.10/dist-packages",
-        "/home/hust/interbotix_ws/install/interbotix_common_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_xs_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_perception_modules/lib/python3.10/site-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_xs_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_perception_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_moveit_interface_msgs/local/lib/python3.10/dist-packages",
+        "/home/hust/RX150_Hedge_Algebra_Control/install/interbotix_common_modules/lib/python3.10/site-packages",
         "/home/hust/apriltag_ws/install/apriltag_ros/local/lib/python3.10/dist-packages",
         "/home/hust/ros2_ws/install/ur_robot_driver/local/lib/python3.10/dist-packages",
         "/home/hust/ros2_ws/install/ur_moveit_config/local/lib/python3.10/dist-packages",
@@ -38,5 +38,5 @@
         "/opt/ros/humble/lib/python3.10/site-packages",
         "/opt/ros/humble/local/lib/python3.10/dist-packages"
     ],
-    "cmake.sourceDirectory": "/home/hust/interbotix_ws/src/interbotix_ros_core/interbotix_ros_slate/interbotix_slate_driver"
+    "cmake.sourceDirectory": "/home/hust/RX150_Hedge_Algebra_Control/src/interbotix_ros_core/interbotix_ros_slate/interbotix_slate_driver"
 }

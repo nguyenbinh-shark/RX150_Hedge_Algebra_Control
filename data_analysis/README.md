@@ -38,7 +38,7 @@ Cột CSV: `timestamp` + mỗi khớp 8 cột `{joint}_` × `pos`, `vel`, `ref_p
 ## Ghi dữ liệu
 
 ```bash
-cd ~/interbotix_ws/data_analysis
+cd ~/RX150_Hedge_Algebra_Control/data_analysis
 python3 csv_logger.py --ros-args -p controller_prefix:=fuzzy -p robot_name:=rx150
 ```
 
@@ -60,7 +60,7 @@ python3 plot_control_csv.py <csv> --save bao_cao.png          # png / pdf / svg
 
 ```bash
 sudo apt install ros-humble-plotjuggler-ros      # 1 lần
-ros2 run plotjuggler plotjuggler -l ~/interbotix_ws/data_analysis/layouts/fuzzy_plotjuggler_layout.xml
+ros2 run plotjuggler plotjuggler -l data_analysis/layouts/fuzzy_plotjuggler_layout.xml
 ```
 
 > Nạp layout **không** tự bật subscriber: phải vào bảng *Streaming* → chọn

@@ -4,10 +4,10 @@ Sổ lệnh để **copy-paste**, không giải thích dài. Vì sao mỗi bậc
 nguyên nhân, và cách thu bằng chứng: xem
 [RUNBOOK](../src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md).
 
-Mọi lệnh chạy từ `~/interbotix_ws`. Mỗi terminal mới đều phải `source`:
+Mọi lệnh chạy từ `~/RX150_Hedge_Algebra_Control`. Mỗi terminal mới đều phải `source`:
 
 ```bash
-cd ~/interbotix_ws && source source_all.sh
+cd ~/RX150_Hedge_Algebra_Control && source source_all.sh
 ```
 
 `./rx150.sh` tự source, nên các lệnh `./rx150.sh …` không cần bước trên.
@@ -28,7 +28,7 @@ Thứ tự: **B0 → T1 → T2 → [giá] → B3 → task**. Hỏng ở bậc n�
 ## 0. B0 — toán học + config (không cần robot)
 
 ```bash
-cd ~/interbotix_ws && source source_all.sh
+cd ~/RX150_Hedge_Algebra_Control && source source_all.sh
 python3 -m pytest src/rx150/rx150_toolbox/rx150_modules/test -q
 ./rx150.sh reach
 ```
@@ -42,7 +42,7 @@ Chạy lại B0 **mỗi lần** snap lại vị trí giá.
 ## 1. Terminal 1 — robot + MoveIt + camera
 
 ```bash
-cd ~/interbotix_ws
+cd ~/RX150_Hedge_Algebra_Control
 pkill -f xs_sdk          # 2 driver trên 1 bus U2D2 = tranh chấp serial
 ./rx150.sh t1-hac        # hoặc ./rx150.sh t1 để dùng bộ fuzzy
 ```
@@ -50,7 +50,7 @@ pkill -f xs_sdk          # 2 driver trên 1 bus U2D2 = tranh chấp serial
 Kiểm ở terminal khác:
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 ros2 topic hz /rx150/joint_states                 # ~100 Hz
 ros2 topic echo /rx150/joint_states --once        # 8 tên: 5 khớp + gripper + 2 finger
 ros2 action list | grep follow_joint_trajectory   # PHẢI có cả arm_ và gripper_controller
@@ -212,7 +212,7 @@ Triệu chứng giống hệt "model kém", nguyên nhân thật là **băng th�
 ## 5. Terminal 3 — task
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 ros2 launch rx150_pick_place tube_rack.launch.py auto_start:=false
 ```
 

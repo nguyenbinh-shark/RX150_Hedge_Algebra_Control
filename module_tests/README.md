@@ -26,7 +26,7 @@ và dữ liệu đo của một lần chạy vào `tuning_runs/<nhãn>_<ts>/` �
 Sau khi build và source workspace:
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source source_all.sh
 python3 module_tests/run_test.py --list
 python3 module_tests/run_test.py perception/example_import_test.py
 ```

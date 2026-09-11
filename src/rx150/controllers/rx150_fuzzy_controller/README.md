@@ -49,7 +49,7 @@ Lệnh này khởi động toàn bộ: Driver xs_sdk, Fuzzy Node, Trajectory Bri
 Bridge, MoveGroup, Static TF cho Camera và RViz 2.
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py
 ```
 
@@ -86,7 +86,7 @@ Hệ thống cung cấp sẵn XML layout dùng chung và các script ghi dữ li
 
 #### Mở PlotJuggler với Layout cấu hình sẵn:
 ```bash
-ros2 run plotjuggler plotjuggler -l ~/interbotix_ws/data_analysis/layouts/fuzzy_plotjuggler_layout.xml
+ros2 run plotjuggler plotjuggler -l ~/RX150_Hedge_Algebra_Control/data_analysis/layouts/fuzzy_plotjuggler_layout.xml
 ```
 
 #### Các Topic chính được theo dõi trong PlotJuggler:

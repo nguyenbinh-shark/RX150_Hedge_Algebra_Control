@@ -96,7 +96,12 @@ def _motor_yaml():
 
 
 MOTOR_YAML = _motor_yaml()
-DEFAULT_OUT_DIR = os.path.expanduser("~/interbotix_ws/tuning_runs")
+DEFAULT_OUT_DIR = os.environ.get(
+    "RX150_TUNING_RUNS",
+    os.path.expanduser("~/RX150_Hedge_Algebra_Control/tuning_runs"
+                       if os.path.isdir(os.path.expanduser("~/RX150_Hedge_Algebra_Control"))
+                       else "~/interbotix_ws/tuning_runs")
+)
 
 SETTLE_VEL_THRESH = 0.02   # rad/s
 SETTLE_WINDOW_S = 0.5

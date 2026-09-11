@@ -1377,8 +1377,12 @@ def install_tag_offset(new_file, out_dir, verdict=""):
     import shutil
     if "CHƯA ĐỦ" in (verdict or ""):
         print("\n  ⚠ KHÔNG cài: kiểm tra chéo nói dữ liệu chưa đủ. Đo thêm pose rồi hãy cài.")
-        return None
-    ws = os.environ.get("RX150_WS", os.path.expanduser("~/interbotix_ws"))
+    ws = os.environ.get(
+        "RX150_WS",
+        os.path.expanduser("~/RX150_Hedge_Algebra_Control"
+                           if os.path.isdir(os.path.expanduser("~/RX150_Hedge_Algebra_Control"))
+                           else "~/interbotix_ws")
+    )
     src = os.path.join(ws, "src", "rx150", "rx150_toolbox", "rx150_perception",
                        "config", "ee_tag_offset.yaml")
     share = None
@@ -2071,7 +2075,12 @@ def main():
         return
 
     out_dir = args.out or os.path.join(
-        os.environ.get("RX150_WS", os.path.expanduser("~/interbotix_ws")),
+        os.environ.get(
+            "RX150_WS",
+            os.path.expanduser("~/RX150_Hedge_Algebra_Control"
+                               if os.path.isdir(os.path.expanduser("~/RX150_Hedge_Algebra_Control"))
+                               else "~/interbotix_ws")
+        ),
         "tuning_runs", f"eetag_{time.strftime('%Y%m%d_%H%M%S')}")
     os.makedirs(out_dir, exist_ok=True)
 

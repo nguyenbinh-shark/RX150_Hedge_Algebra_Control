@@ -43,7 +43,7 @@ def main() -> int:
         from sensor_msgs.msg import JointState
     except ImportError as exc:
         print(f"FAIL: không import được rclpy/sensor_msgs ({exc}).")
-        print("      Hãy 'source ~/interbotix_ws/source_all.sh' trước.")
+        print("      Hãy 'source source_all.sh' trước.")
         return 1
 
     rclpy.init()

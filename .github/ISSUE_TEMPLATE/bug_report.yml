@@ -1,0 +1,92 @@
+name: Báo lỗi · Bug report
+description: Có gì đó không chạy đúng · Something does not work correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Lỗi phần cứng: đọc [RUNBOOK](https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control/blob/main/src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md) trước — bảng triệu chứng → nguyên nhân giải quyết được phần lớn.
+        *Hardware issue? Check the RUNBOOK symptom table first.*
+
+        Tiếng Việt hay tiếng Anh đều được. · Vietnamese or English are both fine.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: Hiện tượng · What happened
+      description: Bạn mong đợi gì, và thực tế xảy ra gì. · What you expected, and what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Cách tái hiện · How to reproduce
+      description: Lệnh cụ thể, theo thứ tự. · The exact commands, in order.
+      placeholder: |
+        1. source source_all.sh
+        2. ./rx150.sh t1
+        3. ...
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Tầng · Layer
+      description: Bạn nghĩ lỗi nằm ở đâu (đoán cũng được) · Where you think it is (a guess is fine)
+      options:
+        - Không rõ · Not sure
+        - Application (rx150_pick_place, rx150_hri)
+        - Application Support (rx150_modules, rx150_motion_common, rx150_perception)
+        - Control (fuzzy / ff / hac controller)
+        - Driver (xs_sdk, realsense, apriltag)
+        - Build / cài đặt · Build / installation
+        - Tài liệu · Documentation
+    validations:
+      required: true
+
+  - type: dropdown
+    id: controller
+    attributes:
+      label: Bộ điều khiển đang chạy · Controller in use
+      options:
+        - Không liên quan · Not relevant
+        - rx150_fuzzy_controller
+        - rx150_ff_controller
+        - rx150_hac_controller
+    validations:
+      required: false
+
+  - type: input
+    id: rung
+    attributes:
+      label: Dừng ở bậc nào · Which bring-up rung failed
+      description: Bậc B0→B6 trong RUNBOOK, nếu có. · The B0→B6 rung from the RUNBOOK, if applicable.
+      placeholder: "B3 — ./rx150.sh check"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log
+      description: |
+        Dán log lỗi. Gói chẩn đoán đầy đủ: `./rx150.sh diag` (tools/collect_diag.sh).
+        *Paste the error output. For a full diagnostic bundle: `./rx150.sh diag`.*
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Môi trường · Environment
+      value: |
+        - OS:               Ubuntu 22.04
+        - ROS:              Humble
+        - Phần cứng · HW:   RX150 + U2D2 / D435i / không có robot · no robot
+        - Commit:           `git rev-parse --short HEAD` →
+    validations:
+      required: true

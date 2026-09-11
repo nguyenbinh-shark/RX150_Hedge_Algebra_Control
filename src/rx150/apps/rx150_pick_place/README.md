@@ -96,7 +96,7 @@ ros2 topic list | grep status
 ```
 
 `./rx150.sh` tự `source_all.sh` và tự đặt đúng cờ, nên **không cần** source tay.
-Terminal T4 thì phải: `source ~/interbotix_ws/source_all.sh`.
+Terminal T4 thì phải: `source ~/RX150_Hedge_Algebra_Control/source_all.sh`.
 
 Kiểm giữa T1 và T2 (bậc B1 của RUNBOOK), giữa T2 và T3 (bậc B2):
 
@@ -118,7 +118,7 @@ ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link   # phải 
 ```
 Hoặc gõ tay:
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 ros2 launch rx150_fuzzy_controller fuzzy_moveit.launch.py \
     use_camera:=true use_camera_static_tf:=false use_handeye_publisher:=false
 ros2 launch rx150_perception rx150_perception.launch.py use_camera:=false use_rviz:=true
@@ -366,7 +366,7 @@ Vị trí thả của task **`pick_place`** (không dùng giá) nằm ở file k
 
 ## Build & test
 ```bash
-cd ~/interbotix_ws
+cd ~/RX150_Hedge_Algebra_Control
 ./tools/build.sh --packages-select rx150_pick_place    # KHÔNG gọi thẳng colcon: xem README gốc
 source install/setup.bash
 

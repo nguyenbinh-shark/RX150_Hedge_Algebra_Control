@@ -73,8 +73,13 @@ def parse_args():
     p.add_argument("--freq", type=float, default=0.2, help="Tần số sine (Hz), mode=sine")
     p.add_argument("--pre-hold", type=float, default=2.0, help="Giây giữ base-pose trước khi kích thích")
     p.add_argument("--duration", type=float, default=5.0, help="Giây ghi dữ liệu sau marker")
-    p.add_argument("--rate", type=float, default=50.0, help="Tần số publish setpoint (Hz)")
-    p.add_argument("--out-dir", default=os.path.expanduser("~/interbotix_ws/tuning_runs"))
+    _default_out = os.environ.get(
+        "RX150_TUNING_RUNS",
+        os.path.expanduser("~/RX150_Hedge_Algebra_Control/tuning_runs"
+                           if os.path.isdir(os.path.expanduser("~/RX150_Hedge_Algebra_Control"))
+                           else "~/interbotix_ws/tuning_runs")
+    )
+    p.add_argument("--out-dir", default=_default_out)
     args = p.parse_args()
     if args.mode in ("step", "sine") and args.joint is None:
         p.error(f"--joint bắt buộc cho mode={args.mode}")

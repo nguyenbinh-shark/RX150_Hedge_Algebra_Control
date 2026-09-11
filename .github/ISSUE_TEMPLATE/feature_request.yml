@@ -1,0 +1,57 @@
+name: Đề xuất tính năng · Feature request
+description: Đề xuất một thay đổi hoặc bổ sung · Propose a change or an addition
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Trước khi đề xuất, xem [docs/cau_truc_kho.md](https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control/blob/main/docs/cau_truc_kho.md) — thứ bạn cần có thể đã có ở `rx150_modules`.
+        *Check the repo-structure doc first — what you need may already live in `rx150_modules`.*
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Vấn đề · The problem
+      description: Bạn đang không làm được gì? Mô tả tình huống, đừng mô tả giải pháp. · What can't you do today? Describe the situation, not the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Đề xuất · Proposal
+      description: Bạn muốn nó hoạt động thế nào. · How you would like it to work.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Thuộc tầng nào · Which IRROS layer
+      options:
+        - Không rõ · Not sure
+        - Application — ứng dụng mới · a new application
+        - Application Support — primitive dùng chung · a shared primitive
+        - Control — luật điều khiển mới hoặc biến thể · a new control law or variant
+        - Công cụ / phân tích · Tooling / analysis
+        - Tài liệu · Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Đã cân nhắc cách nào khác · Alternatives considered
+      description: Kể cả "dùng tạm cách X nhưng bất tiện vì Y". · Including "I work around it with X, but Y".
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Đóng góp · Contribution
+      options:
+        - label: Tôi sẵn sàng tự viết PR cho việc này · I am willing to open a PR for this
+          required: false
+        - label: Tôi có phần cứng RX150 để kiểm thử · I have RX150 hardware to test on
+          required: false

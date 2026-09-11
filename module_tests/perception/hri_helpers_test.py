@@ -17,7 +17,7 @@ except ImportError as exc:
             / 'src' / 'rx150' / 'apps' / 'rx150_hri' / 'scripts')
     if not (root / 'hri_common.py').exists():
         print(f'SKIP: không tìm thấy hri_common.py tại {root}', file=sys.stderr)
-        print('  (thường do chưa source ~/interbotix_ws/install/setup.bash)', file=sys.stderr)
+        print('  (thường do chưa source source_all.sh)', file=sys.stderr)
         sys.exit(0)   # SKIP (không phải FAIL) trong CI khi env chưa setup
     import importlib.util
     spec = importlib.util.spec_from_file_location('hri_common', root / 'hri_common.py')

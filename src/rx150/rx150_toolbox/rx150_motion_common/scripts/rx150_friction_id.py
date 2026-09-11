@@ -85,8 +85,13 @@ def parse_args():
     p.add_argument("--rest-pose", type=float, nargs=5, default=DEFAULT_REST_POSE,
                     metavar=("WAIST", "SHOULDER", "ELBOW", "WRIST_ANGLE", "WRIST_ROTATE"))
     p.add_argument("--cruise-duration", type=float, default=3.0, help="Giây thu mẫu / (tốc độ, hướng)")
-    p.add_argument("--settle-duration", type=float, default=1.5, help="Giây chờ giữa các lượt")
-    p.add_argument("--out-dir", default=os.path.expanduser("~/interbotix_ws/tuning_runs"))
+    _default_out = os.environ.get(
+        "RX150_TUNING_RUNS",
+        os.path.expanduser("~/RX150_Hedge_Algebra_Control/tuning_runs"
+                           if os.path.isdir(os.path.expanduser("~/RX150_Hedge_Algebra_Control"))
+                           else "~/interbotix_ws/tuning_runs")
+    )
+    p.add_argument("--out-dir", default=_default_out)
     return p.parse_args()
 
 

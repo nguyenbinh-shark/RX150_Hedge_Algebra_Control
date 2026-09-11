@@ -10,13 +10,15 @@ import argparse
 import os
 import time
 
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pyrealsense2 as rs
 from ultralytics import YOLO
 
-
-DEFAULT_WEIGHTS = "/home/hust/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/models/best_color.pt"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_WEIGHTS = str(_REPO_ROOT / "src/rx150/rx150_toolbox/rx150_perception/models/best_color.pt")
 
 
 def main() -> int:

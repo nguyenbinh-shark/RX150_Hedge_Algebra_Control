@@ -116,7 +116,7 @@ echo "  ✓ 02_hardware.txt"
 
 # ── 2. Danh mục ROS ─────────────────────────────────────────────────────
 if ! command -v ros2 >/dev/null 2>&1; then
-  echo "⚠️  không có lệnh ros2 — bỏ qua phần ROS. Hãy 'source ~/interbotix_ws/source_all.sh'."
+  echo "⚠️  không có lệnh ros2 — bỏ qua phần ROS. Hãy 'source source_all.sh'."
   echo "không có lệnh ros2 trong PATH" > "$OUT/03_NO_ROS.txt"
 else
   run 03_nodes.txt      15 ros2 node list

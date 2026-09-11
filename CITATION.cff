@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+title: "RX150 Hedge Algebra Control"
+message: >-
+  Nếu bạn dùng phần mềm này trong công bố khoa học, xin trích dẫn theo siêu dữ liệu dưới đây.
+  If you use this software in academic work, please cite it using the metadata below.
+type: software
+authors:
+  - family-names: "Tran"
+    given-names: "Nguyen Binh"
+    alias: nguyenbinh-shark
+repository-code: "https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control"
+abstract: >-
+  A ROS 2 Humble workspace for the Interbotix ReactorX-150 manipulator that moves the joint
+  position loop out of Dynamixel firmware and onto the host at 100 Hz in PWM mode, so that
+  control laws become swappable and directly comparable. Three controllers occupy the same
+  slot: a type-1 Mamdani fuzzy controller with Pinocchio gravity compensation, the same
+  fuzzy PD with kinematic velocity/acceleration feedforward, and a Hedge Algebra Controller
+  (HAC) whose entire control surface reduces to three scalar coefficients. The workspace
+  also contains YOLO-segmentation tube detection, MediaPipe gesture interaction, AprilTag
+  hand-eye calibration, and hardware identification tooling for gravity and friction models.
+keywords:
+  - hedge algebra
+  - fuzzy control
+  - robot manipulator
+  - ROS 2
+  - Interbotix RX150
+  - gravity compensation
+  - PWM control
+  - human-robot interaction
+license: BSD-3-Clause

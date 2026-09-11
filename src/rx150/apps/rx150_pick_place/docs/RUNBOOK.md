@@ -57,7 +57,7 @@ ros2 service call /tube_rack/reset std_srvs/srv/Trigger   # chạy lại sau khi
 ## 1. Quy tắc môi trường
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 ```
 
 `source install/setup.bash` **là chưa đủ**: `apriltag_ros` nằm ở `~/apriltag_ws`,
@@ -88,7 +88,7 @@ ros2 pkg prefix moveit_ros_move_group
 So sánh với shell sạch để chắc chắn:
 
 ```bash
-env -i HOME=$HOME bash -lc 'source ~/interbotix_ws/source_all.sh >/dev/null; \
+env -i HOME=$HOME bash -lc 'source ~/RX150_Hedge_Algebra_Control/source_all.sh >/dev/null; \
     ros2 pkg prefix moveit_ros_move_group'
 ```
 
@@ -212,10 +212,10 @@ tiên tính từ dưới lên** mà dữ liệu không đi qua. Thang bậc §4 
 ### B0 — không cần robot
 
 ```bash
-source ~/interbotix_ws/source_all.sh
+source ~/RX150_Hedge_Algebra_Control/source_all.sh
 # Test đã dời sang rx150_modules khi tách tầng Application Support.
 python3 -m pytest src/rx150/rx150_toolbox/rx150_modules/test -q        # 20 passed
-cd ~/interbotix_ws && ./rx150.sh reach                                 # gộp cả 3 lệnh dưới
+cd ~/RX150_Hedge_Algebra_Control && ./rx150.sh reach                                 # gộp cả 3 lệnh dưới
 ```
 
 `./rx150.sh reach` chạy sẵn đúng bộ này:
@@ -620,7 +620,7 @@ Bag gồm `/rx150/joint_states`, `/rx150/fuzzy/{reference,error,edot,effort}`,
 Mở trong PlotJuggler với layout sẵn có:
 
 ```bash
-ros2 run plotjuggler plotjuggler -l ~/interbotix_ws/data_analysis/layouts/fuzzy_plotjuggler_layout.xml
+ros2 run plotjuggler plotjuggler -l ~/RX150_Hedge_Algebra_Control/data_analysis/layouts/fuzzy_plotjuggler_layout.xml
 ```
 
 So `/rx150/fuzzy/reference` (đặt) với `/rx150/joint_states` (thực) — đây là thứ log

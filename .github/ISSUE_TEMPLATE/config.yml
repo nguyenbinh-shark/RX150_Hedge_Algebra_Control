@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Tài liệu · Documentation
+    url: https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control/blob/main/docs/README.md
+    about: Mục lục toàn bộ tài liệu — cài đặt, kiến trúc, điều khiển, hiệu chuẩn. · Full documentation index.
+  - name: RUNBOOK — chạy trên phần cứng · hardware bring-up
+    url: https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control/blob/main/src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md
+    about: Thang bậc B0→B6 và bảng triệu chứng → nguyên nhân. Đọc trước khi báo lỗi phần cứng. · Read before filing a hardware bug.
+  - name: Hỏi đáp · Questions
+    url: https://github.com/nguyenbinh-shark/RX150_Hedge_Algebra_Control/discussions
+    about: Câu hỏi sử dụng, ý tưởng, thảo luận về điều khiển. · Usage questions and discussion.

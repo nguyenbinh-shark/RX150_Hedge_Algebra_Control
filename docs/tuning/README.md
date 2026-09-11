@@ -15,8 +15,8 @@ lại máy đo, còn `meta.json` / `*.png` / `summary.txt` thì theo kho.
 robot cũng không cần dữ liệu đo:
 
 ```bash
-source ~/interbotix_ws/install/setup.bash
-cd ~/interbotix_ws
+source ~/RX150_Hedge_Algebra_Control/install/setup.bash
+cd ~/RX150_Hedge_Algebra_Control
 
 # mặt điều khiển fuzzy vs HAC + quỹ đạo so sánh + comparison_data.csv
 RX150_PLOT_DIR=docs/tuning ros2 run rx150_motion_common compare_fuzzy_vs_hac.py
