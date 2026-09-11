@@ -229,7 +229,7 @@ thiết bị sẽ lỗi "Device or resource busy". Muốn dùng PointCloud Tuner
 thêm cả `pointcloud_enable:=true`.)*
 
 **Cách hiệu chuẩn ArmTag (Chỉ cần làm 1 lần hoặc khi di chuyển camera):**
-1. Đưa tay robot ra trước camera sao cho tấm AprilTag (tag36h11 id 0) nằm rõ nét trong khung nhìn.
+1. Đưa tay robot ra trước camera sao cho tấm AprilTag TAY GẮP (tag36h11 **id 1** — id 0 là tag của GIÁ) nằm rõ nét trong khung nhìn.
 2. Trên cửa sổ **Armtag Tuner GUI**, tăng `Number of Snapshots` lên **10**.
 3. Bấm **`Snap Pose`**.
 4. Hệ thống sẽ tự động tính ma trận biến đổi chính xác, cập nhật RViz ngay lập tức và lưu đè vào `config/static_transforms.yaml`.

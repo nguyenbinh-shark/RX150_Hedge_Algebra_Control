@@ -42,7 +42,11 @@
                                 # (key_point: x−0.05 rồi mới về home)
     via_staging: true           # ghé cột thẳng đứng trên tư thế trung
                                 # chuyển trước khi vươn ra chỗ thả/giá
-    min_ee_z: 0.015             # CHẶN CỨNG: ee không bao giờ xuống thấp hơn
+    # 0.015 cao hơn TÂM ống nằm ngang (bán kính 8.5mm ⇒ tâm ≈ 0.009; detector đo
+    # 0.010) nên mọi lần gắp đều bị kẹp hụt: log 'GRASP: z=0.010m dưới min_ee_z'
+    # rồi 'Vật TUỘT khi nhấc lên (ngón đã đóng hết)', left_finger về 0.0100.
+    # 0.010 vừa chạm tâm ống, vẫn cách mặt bàn 10mm. Đo 2026-09-09 trên bàn thật.
+    min_ee_z: 0.010             # CHẶN CỨNG: ee không bao giờ xuống thấp hơn
     object_length: 0.10         # kích thước vật (để attach vào planning scene)
     object_radius: 0.0085
 

@@ -108,6 +108,7 @@ nằm trong [RUNBOOK](src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md).
 | :--- | :--- |
 | [RUNBOOK.md](src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md) | Thang bậc bring-up, bảng triệu chứng → nguyên nhân |
 | [PERCEPTION_GUIDE.md](src/rx150/rx150_toolbox/rx150_perception/docs/PERCEPTION_GUIDE.md) | Hiệu chuẩn hand-eye, tune PCL, tham số YOLO |
+| [docs/so_do_dieu_khien.md](docs/so_do_dieu_khien.md) | Sơ đồ cấu trúc điều khiển (5 tầng, 3 vòng kín) + bảng chênh lệch so với baseline cũ `key_point/task4_full.py` |
 | [docs/huong_dan_chi_tiet.md](docs/huong_dan_chi_tiet.md) | Hướng dẫn tổng thể, dạng bài viết |
 | [docs/tuning/](docs/tuning/) | Kết quả đo: mặt điều khiển, đường quỹ đạo, ma sát/trọng lực |
 

@@ -50,6 +50,60 @@ D435 ──rs_launch──► /camera/camera/{color, aligned_depth_to_color, dep
 
 ## Chạy
 
+### Luồng chạy: 3 terminal
+
+Mỗi terminal **giữ nguyên** một launch chạy suốt phiên; terminal 4 chỉ để gõ lệnh
+điều khiển. Thứ tự bắt buộc — hỏng ở bậc nào thì dừng ở bậc đó, đừng chạy tiếp.
+
+| # | Lệnh | Chạy cái gì | Đợi thấy gì rồi mới sang bước sau |
+|---|---|---|---|
+| **0** | `pkill -f xs_sdk` | dọn driver cũ | (2 driver trên 1 bus U2D2 = tranh chấp serial) |
+| **T1** | `./rx150.sh t1` | xs_sdk + fuzzy_node + 2 bridge + move_group + camera | `InterbotixRobotXS is up!` và `RealSense Node Is Up!` |
+| **T2** | `./rx150.sh t2` | `static_trans_pub` (TF calib) + RViz | `Initialized Static Transform Publisher!` |
+| **T3** | `./rx150.sh tubes` *hoặc* `./rx150.sh gesture` | task node **+ `yolo_tube_detector`** | bảng "Hình học giá" + `sẵn sàng` |
+
+Giá đỡ ống nghiệm đã dán AprilTag thì chèn thêm **một lần** giữa T2 và T3 (chỉ chạy lại
+khi giá bị xê dịch — kết quả nằm trong file, không phải trong RAM):
+
+```bash
+./rx150.sh rack-calib   # đo 4 miệng lỗ bằng camera → rx150_perception/config/rack_pose.yaml
+./rx150.sh reach        # 4 lỗ vừa đo có với tới được không
+```
+
+`rack_pose.yaml` **thắng** `slot0_*`/`slot_spacing`/`rack_yaw_deg` trong
+`tube_rack_params.yaml`; dòng đầu tiên của bảng "Hình học giá" ở T3 nói rõ đang dùng
+nguồn nào. Chưa dán tag thì bỏ qua — đường đo thước cũ chạy y như trước.
+Chi tiết: [RUNBOOK §B2b](docs/RUNBOOK.md).
+| **T4** | `ros2 topic echo /<task>/status` | theo dõi + gõ lệnh service | — |
+
+**`<task>` phụ thuộc bạn chọn gì ở T3** — gõ nhầm thì chỉ nhận được
+`WARNING: topic … does not appear to be published yet`, không phải hệ thống hỏng:
+
+| T3 chạy | namespace | topic trạng thái |
+|---|---|---|
+| `./rx150.sh tubes` (`tube_rack.launch.py`) | `/tube_rack` | `/tube_rack/status` |
+| `./rx150.sh gesture` (`pick_place.launch.py`) | `/pick_place_moveit` | `/pick_place_moveit/status` |
+
+Không nhớ đang chạy cái nào thì hỏi thẳng:
+```bash
+ros2 topic list | grep status
+```
+
+`./rx150.sh` tự `source_all.sh` và tự đặt đúng cờ, nên **không cần** source tay.
+Terminal T4 thì phải: `source ~/interbotix_ws/source_all.sh`.
+
+Kiểm giữa T1 và T2 (bậc B1 của RUNBOOK), giữa T2 và T3 (bậc B2):
+
+```bash
+ros2 topic hz /rx150/joint_states                              # ~100 Hz, 8 tên khớp
+ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link   # phải ra số
+```
+
+> ⚠️ `ros2 topic hz` / `echo` là subscriber RELIABLE **vào sau** một topic 100 Hz nên
+> hay im lặng hoặc báo `A message was lost!!!` dù topic vẫn chạy tốt. Đừng vội kết luận
+> NO-GO: kiểm chéo bằng log `fuzzy_node` — nếu nó **không** lặp lại
+> `stale joint_states -> zero PWM` thì vòng điều khiển đang nhận dữ liệu bình thường.
+
 **T1 + T2 — motion stack + camera + TF calib.** Dùng wrapper có sẵn ở gốc workspace
 (nó tự `source_all.sh`, tự đặt đúng cờ):
 ```bash
@@ -185,6 +239,113 @@ Chi tiết: [`docs/RUNBOOK.md`](docs/RUNBOOK.md) §4.
 `/status` là JSON: `state`, `detail`, `attempted`, `succeeded`, `faults`,
 `success_rate`, `last_cycle_s`, `last_error` — đủ cho HMI/log dây chuyền.
 
+## Sự cố đã gặp trên phần cứng (2026-09-09)
+
+Chạy thử một ống nghiệm vàng trên bàn, theo thang bậc RUNBOOK. **B0–B3 GO ngay**
+(20/20 pytest; `joint_states` 100.1 Hz; TF `camera_link → camera_color_optical_frame →
+world → rx150/base_link` đúng chiều, không frame 2 cha; detector ra `yellow` ở frame
+`rx150/base_link`, 4.3 Hz, tản mát XY 0.2–1.5 mm). Lỗi nằm ở **tầng chấp hành**, và là
+**bốn nguyên nhân xếp chồng** — sửa một cái vẫn không chạy, nên phải sửa đủ.
+
+### 1. Ống đặt trúng vùng cấm của giá ⇒ `attempted = 0`
+
+Ống ở `(0.2495, −0.0235)`, cách slot 1 `(0.26, −0.025)` đúng **1.06 cm** < `rack_filter_xy_m`
+0.05 ⇒ bị coi là đã cắm. Xem ô cảnh báo ở mục *Hình học giá* bên trên. Đây **không** phải
+bug: đúng bố cục mặc định thì vùng cấm là `x ∈ [0.21,0.31]` ∧ `y ∈ [−0.125,+0.125]`.
+
+### 2. `Ku` của fuzzy quá thấp ⇒ ngay `~/home` cũng báo thất bại
+
+Với `Ku: [600, 800, 800, 700, 700]`, `elbow` dừng lại khi còn dư **3.78°**, vượt
+`verify_tolerance_rad` 3.44°. Nhân **2.5** (giữ nguyên tỉ lệ giữa các khớp) đưa sai số lớn
+nhất về **1.49°**; mức phẳng 3000 chỉ được 1.40° — chênh lệch trong nhiễu, nghĩa là phần dư
+còn lại là **ma sát/rơ**, không phải thiếu gain. Đã ghi vào
+`rx150_fuzzy_controller/config/rx150_fuzzy_gains.yaml`.
+
+### 3. Nguyên nhân chính — ba tầng ngưỡng chồng nhau
+
+Hai tầng phía MoveIt chặt hơn khả năng thật của vòng PWM, nên **lệnh đầu chạy được, để lại
+~2° dư, rồi mọi lệnh sau bị loại sạch**:
+
+| Tầng | Đặt ở đâu | Cũ | Nay |
+|---|---|---|---|
+| Kiểm tư thế **xuất phát** (MoveIt) | `fuzzy_moveit.launch.py` → `trajectory_execution.allowed_start_tolerance` | 0.01 rad (0.57°) | **0.10** |
+| Kiểm **đích** (bridge) | cùng launch → `default_goal_tolerance` của `rx150_trajectory_bridge.py` | 0.02 rad (1.15°) | **0.10** |
+| Nghiệm thu (task) | `*_params.yaml` → `verify_tolerance_rad` | 0.06 rad (3.44°) | **giữ nguyên** |
+
+Cả hai giá trị MoveIt thừa hưởng từ launch vendor `xsarm_moveit.launch.py`, vốn dùng
+`ros2_control` bám vị trí tới <0.01 rad. Bộ fuzzy PWM để lại 1.4–2.5° ở home và tới **6.5°
+ở `wrist_angle`** khi tay vươn ra — không bao giờ đạt nổi.
+
+**Đừng nới `verify_tolerance_rad`.** Đó là tầng duy nhất đối chiếu `joint_states` thật và
+là thứ chặn tay gắp không khí. Chỉ nới hai tầng MoveIt cho khớp năng lực bộ điều khiển.
+
+**Dấu hiệu nhận ra trong log** — quan trọng vì nó khác hẳn lỗi bám kém:
+
+```
+Validating trajectory with allowed_start_tolerance 0.01
+[ERROR] moveit_ros.trajectory_execution_manager:          <- message RỖNG
+Execution completed: ABORTED
+```
+
+abort sau **~9 ms** và **không có** dòng `sending trajectory to /rx150/arm_controller`.
+Quỹ đạo bị loại *trước khi* xuống tới bridge. Task sau đó báo `CONTROL_FAILED(-4)` kèm sai
+số khổng lồ (27°, thậm chí 178°) — con số đó là khoảng cách tới **đích**, vì tay chưa hề
+nhúc nhích. Phân biệt:
+
+- abort **nhanh**, không có dòng `sending trajectory` ⇒ bị loại ở khâu **xuất phát**.
+- abort **chậm**, kèm `GOAL_TOLERANCE_VIOLATED: … err=… > tol=0.0200` ⇒ tầng **bridge**.
+
+> ⚠️ **Bẫy: `ros2 param set` KHÔNG có tác dụng với hai tham số này.**
+> `ros2 param set /move_group trajectory_execution.allowed_start_tolerance 0.10` trả
+> "Set parameter successful" và `param get` đọc ra 0.1, **nhưng executor vẫn dùng 0.01** —
+> `TrajectoryExecutionManager` cache lúc khởi tạo, log vẫn in 0.01. Bridge cũng vậy: đọc
+> `default_goal_tolerance` một lần vào `self._default_tol` lúc init. **Phải sửa launch rồi
+> relaunch `./rx150.sh t1`.** (Ngược lại, `Ku` thì chỉnh nóng được — `fuzzy_node.cpp:87`
+> có `on_set_parameters_callback`.)
+
+Sau khi sửa đủ 3 tầng, chu kỳ lần đầu đi hết chuỗi thật:
+`APPROACH ✓ → DESCEND ✓ → GRASP ✓ → LIFT`, không còn `CONTROL_FAILED` ở bước di chuyển nào.
+
+### 4. Còn treo: kẹp hụt ống nằm ngang
+
+Đã sửa một phần: `min_ee_z` là **0.015**, trong khi ống bán kính 8.5 mm nằm trên bàn có tâm
+ở ~0.009 (detector đo 0.010–0.013) ⇒ mọi lần kẹp đều bị nâng lên **cao hơn tâm ống 5 mm**
+(log in `GRASP: z=0.010m dưới min_ee_z=0.015m → nâng lên min_ee_z` ở **mọi** chu kỳ).
+Đã hạ xuống `0.010`. **Vẫn hụt**: ngón khép hết, `left_finger` = 0.0100–0.0133 m — tức
+thấp hơn cả `finger_closed_m: 0.015` mà config giả định.
+
+Đã loại trừ: nhiễu nhận diện (lặp lại ±3 mm giữa các chu kỳ) và sai lệch depth (đo 0.010 vs
+hình học 0.009).
+
+**Nghi vấn còn lại: `detection_yaw_offset_deg` chưa bao giờ được hiệu chuẩn.** Detector lấy
+yaw từ `cv2.minAreaRect` trong hệ **ảnh**; trục ảnh không trùng trục `base_link` thì ngón
+khép **dọc** theo ống thay vì cắt ngang, gạt ống văng ra. Cách hiệu chuẩn nằm ngay ở mục
+*Quy ước hướng* bên trên: đặt 1 ống dọc trục **+x**, đọc yaw trong log, lấy hiệu bỏ vào
+`detection_yaw_offset_deg`. Làm việc này **trước** khi tinh chỉnh bất cứ thứ gì khác trong
+đường gắp.
+
+### Việc vặt phát hiện kèm
+
+- Camera D435i đang cắm **cổng USB 2.1** (`Device 243322073847 is connected using a 2.1
+  port`) ⇒ color/aligned_depth chỉ đạt **18.9/19.9 Hz** thay vì 30. Đủ cho detector 5 Hz,
+  nhưng nên đổi sang cổng USB 3.
+- `./rx150.sh t2` mở luôn `armtag_tuner_gui` (mặc định của `rx150_perception.launch.py`),
+  mà RUNBOOK §B2 dặn không để GUI này mở lâu vì rò timer 20 Hz.
+- `open_gripper` trả `success=False` kèm message `'Đã mở gripper.'` — mâu thuẫn đã biết,
+  xem mục *Gripper*. Mở dứt điểm bằng PWM trực tiếp:
+  ```bash
+  ros2 topic pub -1 /rx150/commands/joint_single \
+      interbotix_xs_msgs/msg/JointSingleCommand "{name: 'gripper', cmd: 250.0}"
+  ```
+
+### File đã đổi trong đợt này
+
+| File | Đổi gì |
+|---|---|
+| `rx150_fuzzy_controller/launch/fuzzy_moveit.launch.py` | `allowed_start_tolerance` 0.01→0.10; thêm `default_goal_tolerance: 0.10` cho bridge |
+| `rx150_fuzzy_controller/config/rx150_fuzzy_gains.yaml` | `Ku` ×2.5 → `[1500, 2000, 2000, 1750, 1750]` |
+| `rx150_pick_place/config/pick_place_params.yaml` | `min_ee_z` 0.015→0.010 |
+
 ## State machine
 
 ```
@@ -228,13 +389,51 @@ Toàn bộ tham số nằm trong `config/*.yaml` (có chú thích từng dòng).
   không trùng trục base_link, bù bằng `detection_yaw_offset_deg` / `detection_invert_yaw`:
   đặt 1 ống dọc trục +x của robot, xem log yaw, lấy hiệu.
 
-### Hình học giá (`tube_rack_params.yaml`)
-- `slot0_x/y/z` — **miệng lỗ** của slot đầu tiên (frame `rx150/base_link`).
-- `rack_yaw_deg` — hướng **hàng slot** trong mặt phẳng XY (90° = hàng dọc trục y).
-- `rack_tilt_deg` — nghiêng **trục lỗ** so với phương **thẳng đứng**
-  (giá nghiêng 62° so với mặt bàn ⇒ đặt `28.0`). Pitch lúc cắm được suy từ đây.
-- `slot_dz` — chênh cao mỗi slot (giá bậc thang).
-- Node in bảng "slot nào với tới được" **mỗi lần khởi động**.
+### Hình học giá — chỉnh ở đâu
+
+**File cần sửa:**
+```
+src/rx150/apps/rx150_pick_place/config/tube_rack_params.yaml
+```
+Gói cài bằng `--symlink-install` nên sửa `src/` **có hiệu lực ngay**, chỉ cần khởi động
+lại T3 (`./rx150.sh tubes`), **không** phải `colcon build`.
+
+Đo bằng thước trong frame `rx150/base_link` (gốc ở chân robot, +x ra trước mặt,
++y sang trái). Mặc định hiện tại mô tả giá 4 lỗ nằm ở `x = 0.26`, hàng lỗ dọc trục y:
+
+| Khoá | Ý nghĩa | Mặc định |
+|---|---|---|
+| `slot0_x/y/z` | **miệng lỗ** của slot đầu tiên | `0.26 / −0.075 / 0.10` |
+| `rack_yaw_deg` | hướng **hàng slot** trong mặt phẳng XY (90° = hàng dọc trục y) | `90.0` |
+| `rack_tilt_deg` | nghiêng **trục lỗ** so với phương **thẳng đứng** (giá nghiêng 62° so mặt bàn ⇒ `28.0`). Pitch lúc cắm suy từ đây | `0.0` |
+| `slot_spacing` | khoảng cách tâm–tâm 2 slot | `0.05` |
+| `slot_dz` | chênh cao mỗi slot (giá bậc thang) | `0.0` |
+| `num_slots` | số lỗ | `4` |
+| `color_slot_map` | màu → slot ưu tiên | pink→0, blue→1, green→2, yellow→3 |
+
+Node in bảng **"slot nào với tới được"** mỗi lần khởi động. Sau khi đo lại, kiểm offline
+trước khi cấp điện (~1 giây, không cần robot):
+
+```bash
+./rx150.sh reach        # chạy cả 2 config + tư thế trung chuyển
+```
+
+> ⚠️ **Bẫy: `rack_filter_xy_m` tạo một vùng cấm đặt vật.** Ống nằm trong bán kính
+> `rack_filter_xy_m` (mặc định **0.05 m**) quanh **bất kỳ** slot nào sẽ bị coi là
+> **"đã cắm rồi"** — node bỏ qua nó và đánh dấu slot đó đã đầy. Đây là chủ ý (chống cắm
+> chồng ống), nhưng với bố cục mặc định nó cấm cả dải:
+>
+> ```
+> x ∈ [0.21, 0.31]   VÀ   y ∈ [−0.125, +0.125]
+> ```
+>
+> Đặt ống nguồn vào đó thì chu kỳ kết thúc ngay với `attempted = 0` và log
+> `Slot k đã có ống … — bỏ qua, đánh dấu đã đầy.` / `[DONE] không còn ống nào cần gắp`.
+> Trông y hệt "task không chạy". Để ống nguồn **ngoài** dải trên, ví dụ `(0.20, 0.18)`.
+> Đổi bố cục giá thì vùng cấm dịch theo — tính lại từ `slot0_*` + `slot_spacing`.
+
+Vị trí thả của task **`pick_place`** (không dùng giá) nằm ở file khác:
+`config/pick_place_params.yaml` → `place_x/y/z` (mặc định `0.28 / −0.12 / 0.06`).
 
 ## Gripper: bridge vs PWM
 - **Bridge (mặc định):** goal nhóm `interbotix_gripper` (joint `left_finger`,

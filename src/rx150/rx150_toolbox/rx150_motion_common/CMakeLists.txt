@@ -21,6 +21,9 @@ install(PROGRAMS
   scripts/rx150_run_compare.py
   scripts/rx150_gravity_id.py
   scripts/rx150_friction_id.py
+  scripts/rx150_steady_state_bench.py
+  scripts/rx150_stiction_hysteresis.py
+  scripts/rx150_ee_tag_bench.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install shared config (motor yaml, sensors_3d)

@@ -104,17 +104,32 @@ def launch_setup(context, *args, **kwargs):
         'config',
         'rx150_hac_gains.yaml')
 
+    hac_node_params = [
+        hac_params,
+        {'robot_description': robot_description_launch_arg},
+        {'enable_profile': False},
+    ]
+
+    # gravity_model_file: nạp rx150_gravity_model.yaml (do rx150_gravity_id.py
+    # mode identify sinh ra) SAU gains_file, để gravity_model_source=fitted +
+    # fitted_gravity_coeffs đè lên mặc định "pinocchio". Cùng cơ chế với
+    # hac_control.launch.py — thiếu arg này thì model đã hiệu chuẩn không có
+    # đường nào vào được stack pick-place.
+    gravity_model_file_str = LaunchConfiguration(
+        'gravity_model_file').perform(context)
+    if gravity_model_file_str:
+        hac_node_params.append(os.path.join(
+            get_package_share_directory('rx150_hac_controller'),
+            'config',
+            gravity_model_file_str))
+
     hac_node = Node(
         package='rx150_hac_controller',
         executable='hac_node',
         name='hac_node',
         namespace=robot_name,
         output='screen',
-        parameters=[
-            hac_params,
-            {'robot_description': robot_description_launch_arg},
-            {'enable_profile': False}
-        ])
+        parameters=hac_node_params)
 
     # ------------------------------------------------------------------ #
     # 3. hac_trajectory_bridge (FollowJointTrajectory action server)   #
@@ -125,7 +140,12 @@ def launch_setup(context, *args, **kwargs):
         name='hac_trajectory_bridge',
         namespace=robot_name,
         output='screen',
-        parameters=[{'setpoint_topic': 'hac/setpoint'}])
+        # default_goal_tolerance: ngưỡng bridge kết luận goal đạt hay chưa. Mặc định
+        # 0.02 rad (1.15°) chặt hơn khả năng của vòng PWM ⇒ mọi goal trả
+        # GOAL_TOLERANCE_VIOLATED, MoveIt dịch thành CONTROL_FAILED. Giữ BẰNG bản
+        # fuzzy để hai bộ còn so sánh được với nhau.
+        parameters=[{'setpoint_topic': 'hac/setpoint',
+                     'default_goal_tolerance': 0.10}])
 
     # ------------------------------------------------------------------ #
     # 3b. gripper_trajectory_bridge (PWM FJT server cho MoveIt)          #
@@ -211,7 +231,12 @@ def launch_setup(context, *args, **kwargs):
         'moveit_manage_controllers': False,
         'trajectory_execution.allowed_execution_duration_scaling': 1.2,
         'trajectory_execution.allowed_goal_duration_margin': 0.5,
-        'trajectory_execution.allowed_start_tolerance': 0.01,
+        # 0.01 rad (0.57°) thừa hưởng từ launch vendor, hợp với controller
+        # ros2_control bám vị trí. Vòng PWM (fuzzy lẫn HAC) để lại sai số xác lập
+        # lớn hơn thế nhiều ⇒ MoveIt loại MỌI quỹ đạo sau lệnh đầu tiên ngay ở khâu
+        # validate, abort sau ~9ms mà KHÔNG có dòng 'sending trajectory'.
+        # Lưới an toàn thật là verify_tolerance_rad (3.44°) của tầng task.
+        'trajectory_execution.allowed_start_tolerance': 0.10,
     }
 
     planning_scene_monitor_parameters = {
@@ -537,6 +562,19 @@ def generate_launch_description():
             default_value='false',
             choices=('true', 'false'),
             description='enable OctoMap 3D obstacle avoidance from pointcloud. Disabled by default.',
+        )
+    )
+
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'gravity_model_file',
+            default_value='',
+            description=(
+                'Tên file rx150_gravity_model.yaml trong rx150_hac_controller/config '
+                '(do rx150_gravity_id.py mode identify sinh ra) để nạp '
+                'gravity_model_source=fitted + fitted_gravity_coeffs. Để trống -> '
+                'dùng Pinocchio + Gff mặc định.'
+            ),
         )
     )
 

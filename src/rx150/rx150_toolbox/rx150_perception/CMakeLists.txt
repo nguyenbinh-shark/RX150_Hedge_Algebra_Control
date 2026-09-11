@@ -11,7 +11,9 @@ find_package(ament_cmake REQUIRED)
 install(
   PROGRAMS
     scripts/hand_gesture_node.py
+    scripts/rack_calib_node.py
     scripts/yolo_tube_detector_node.py
+    test/test_rack_calib.py
     test/test_yolo_tube_detector.py
   DESTINATION lib/${PROJECT_NAME}
 )

@@ -15,7 +15,8 @@
 #     - chọn solver (vd Tsai-Lenz), "Compute", "Save calibration"
 #   Sau đó: tắt cả 2 terminal, chạy lại fuzzy_moveit với use_handeye_publisher:=true.
 #
-# Tag (mặc định tag_0 = tag36h11 id=0, cạnh 50mm) phải dán cố định lên mặt trên
+# Tag (tag36h11 id=1, cạnh ô đen 28mm — nguồn sự thật là config/apriltag_calib.yaml,
+# chú thích cũ ghi 50mm là SAI) phải dán cố định lên mặt trên
 # gripper (gần rx150/ee_gripper_link). Xem config/apriltag_calib.yaml để đổi tag.
 
 import os
@@ -40,9 +41,12 @@ def generate_launch_description():
         executable='apriltag_ros_continuous_detector_node',
         name='apriltag_ros_continuous_detector_node',
         output='screen',
+        # '~/' bắt buộc: ContinuousDetector subscribe topic PRIVATE
+        # (~/image_rect, ~/camera_info). Bản cũ remap tên trần nên node lên
+        # nhưng không nhận ảnh -> easy_handeye2 không bao giờ thấy mẫu nào.
         remappings=[
-            ('image_rect', '/camera/camera/color/image_raw'),
-            ('camera_info', '/camera/camera/color/camera_info'),
+            ('~/image_rect', '/camera/camera/color/image_raw'),
+            ('~/camera_info', '/camera/camera/color/camera_info'),
         ],
         parameters=[apriltag_config],
     )

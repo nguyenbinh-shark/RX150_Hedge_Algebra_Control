@@ -9,7 +9,14 @@ tube_rack_node — gắp ống nghiệm nằm trên bàn → cắm vào giá, ph
 Chu kỳ: SCAN → (mỗi ống) PLANNING → APPROACH → DESCEND → GRASP(+verify) → LIFT
 → TRANSPORT → INSERT → RELEASE → RETRACT → … → HOME + báo cáo.
 
-HÌNH HỌC GIÁ (đọc kỹ trước khi chỉnh config):
+HÌNH HỌC GIÁ — HAI NGUỒN, file hiệu chuẩn THẮNG:
+  (a) rack_calib_file (mặc định rack_pose.yaml của rx150_perception) — do
+      rack_calib_node đo bằng AprilTag dán trên giá. Tả được cả 4 lỗ ở 4 đỉnh
+      hình chữ nhật + TRỤC LỖ thật. Có file thì (b) bị bỏ qua hoàn toàn.
+      Hiệu chuẩn lại: ./rx150.sh rack-calib
+  (b) slot0_* + rack_yaw_deg + slot_spacing dưới đây — đo bằng thước, chỉ tả
+      được MỘT HÀNG slot thẳng. Đường dự phòng khi chưa dán tag lên giá.
+
   slot0_x/y/z   toạ độ MIỆNG LỖ slot đầu tiên trong frame rx150/base_link
   rack_yaw_deg  hướng của HÀNG slot trong mặt phẳng XY (0° = dọc trục +x)
   rack_tilt_deg độ nghiêng của TRỤC LỖ so với phương THẲNG ĐỨNG
@@ -29,9 +36,12 @@ Chạy:       ros2 launch rx150_pick_place tube_rack.launch.py [dry_run:=true] [
 """
 import json
 import math
+import os
 import threading
 
 import rclpy
+import yaml
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
@@ -50,6 +60,8 @@ NODE_DEFAULTS = {
     'pick_order': 'nearest_first',  # nearest_first | farthest_first | detection
     'max_consecutive_failures': 2,
     # ---- hình học giá ----
+    # Rỗng = tắt hẳn đường hiệu chuẩn, chỉ dùng slot0_* bên dưới.
+    'rack_calib_file': 'rack_pose.yaml',
     'slot0_x': 0.24,
     'slot0_y': -0.01,
     'slot0_z': 0.10,
@@ -101,6 +113,7 @@ class TubeRackNode(Node):
         self.skill = self.stack.skill
         self.status = self.stack.status
 
+        self.calib = self._load_rack_calib()
         self.slots = self._compute_slots()
         self._slot_occupied = {}
         self._scene_ready = False
@@ -135,8 +148,76 @@ class TubeRackNode(Node):
                                                  mode='pwm'))
 
     # ── hình học giá ────────────────────────────────────────────────────
+    def _load_rack_calib(self):
+        """Nạp rack_pose.yaml (rack_calib_node đo bằng AprilTag) nếu có.
+
+        Thắng slot0_*/slot_spacing/rack_yaw_deg vì file này tả ĐÚNG 4 lỗ ở 4 đỉnh
+        hình chữ nhật + trục lỗ thật, còn bộ tham số kia chỉ tả được một HÀNG
+        slot thẳng. Không có file thì im lặng quay về đường đo bằng thước.
+
+        Đọc THẲNG file chứ không tra TF `tube_rack`: hình học giá phải xác định
+        ngay lúc khởi động (check_rack_reachable chạy trước khi có ai publish TF),
+        và một chu kỳ gắp không được đổi mục tiêu giữa chừng vì camera rung.
+        """
+        raw = str(getattr(self.cfg, 'rack_calib_file', '') or '').strip()
+        if not raw:
+            return None
+        path = raw
+        if not os.path.isabs(path):
+            try:
+                path = os.path.join(get_package_share_directory('rx150_perception'),
+                                    'config', raw)
+            except PackageNotFoundError:
+                self.get_logger().warn(
+                    f'Không thấy package rx150_perception — bỏ qua rack_calib_file={raw}.')
+                return None
+        if not os.path.exists(path):
+            self.get_logger().info(
+                f'CHƯA hiệu chuẩn giá (không có {path}) ⇒ dùng slot0_*/slot_spacing/'
+                'rack_yaw_deg đo bằng thước trong tube_rack_params.yaml. '
+                'Hiệu chuẩn bằng camera: ./rx150.sh rack-calib')
+            return None
+        try:
+            with open(path, 'r', encoding='utf-8') as handle:
+                doc = yaml.safe_load(handle) or {}
+        except (OSError, yaml.YAMLError) as exc:          # noqa: BLE001
+            self.get_logger().error(f'Đọc {path} hỏng ({exc}) — quay về slot0_*.')
+            return None
+
+        slots = [[float(c) for c in item] for item in (doc.get('slots') or [])]
+        if not slots or any(len(s) != 3 for s in slots):
+            self.get_logger().error(
+                f'{path} thiếu/hỏng khoá `slots` — quay về slot0_*. Snap lại: '
+                './rx150.sh rack-calib')
+            return None
+        base = str(doc.get('base_frame', ''))
+        if base and base != str(self.cfg.base_frame):
+            self.get_logger().error(
+                f'{path} đo trong khung {base} nhưng node đang làm việc trong '
+                f'{self.cfg.base_frame} — BỎ QUA file. Sửa base_frame rồi snap lại.')
+            return None
+
+        axis = [float(v) for v in (doc.get('slot_axis') or [0.0, 0.0, 1.0])]
+        norm = math.sqrt(sum(v * v for v in axis)) or 1.0
+        axis = tuple(v / norm for v in axis)
+        self.cfg.num_slots = len(slots)
+        self.cfg.rack_tilt_deg = float(doc.get('rack_tilt_deg', 0.0))
+        box = doc.get('rack_box') or {}
+        for key in ('x', 'y', 'z', 'size_x', 'size_y', 'size_z'):
+            if key in box:
+                setattr(self.cfg, f'rack_box_{key}', float(box[key]))
+        meta = doc.get('measurement') or {}
+        self.get_logger().info(
+            f'Hình học giá lấy từ HIỆU CHUẨN: {path} '
+            f'(tag {meta.get("tag_id", "?")}, {meta.get("samples", "?")} mẫu, '
+            f'{meta.get("calibrated_at", "?")}) — slot0_*/slot_spacing/rack_yaw_deg '
+            'trong tube_rack_params.yaml KHÔNG được dùng.')
+        return {'slots': [tuple(s) for s in slots], 'axis': axis, 'path': path}
+
     def _compute_slots(self):
         """[(x, y, z_miệng_lỗ)] cho từng slot, từ slot0 + hướng hàng + bậc cao."""
+        if self.calib:
+            return list(self.calib['slots'])
         yaw = math.radians(float(self.cfg.rack_yaw_deg))
         spacing = float(self.cfg.slot_spacing)
         dz = float(self.cfg.slot_dz)
@@ -152,6 +233,11 @@ class TubeRackNode(Node):
         (theo phương bán kính của slot). Ống kẹp nằm dọc trục ee_z ⇒ pitch của
         ee đúng bằng góc nghiêng đó.
         """
+        if self.calib:
+            # Trục ĐO ĐƯỢC, không phải trục suy ra từ phương bán kính: giá đặt
+            # lệch tâm thì hai thứ này khác nhau vài độ.
+            axis = self.calib['axis']
+            return axis, math.acos(max(-1.0, min(1.0, axis[2])))
         tilt = math.radians(float(self.cfg.rack_tilt_deg))
         azimuth = math.atan2(sy, sx)
         axis = (math.sin(tilt) * math.cos(azimuth),
@@ -173,7 +259,13 @@ class TubeRackNode(Node):
         return (sx + axis[0] * along, sy + axis[1] * along, sz + axis[2] * along), tilt
 
     def _place_ladder(self, tilt):
-        """Ladder pitch quanh góc nghiêng của lỗ (không phải quanh 0)."""
+        """Ladder pitch quanh góc nghiêng của lỗ (không phải quanh 0).
+
+        Khi có hiệu chuẩn, rack_tilt_deg là góc ĐO ĐƯỢC nên hầu như không bao giờ
+        đúng bằng 0 (0,3–0,5° là chuyện thường) ⇒ nhánh "tôn trọng ladder trong
+        YAML" bên dưới tự tắt và ladder được dựng quanh góc thật. Đó là ý muốn:
+        số đo được sát thực tế hơn ladder đặt tay.
+        """
         override = list(self.cfg.place_pitch_ladder or [])
         if override and abs(float(self.cfg.rack_tilt_deg)) < 1e-6:
             return override            # giá dựng đứng: tôn trọng ladder trong YAML
@@ -199,9 +291,12 @@ class TubeRackNode(Node):
         self.get_logger().info('Hình học giá (tầm với rx150 ≈ '
                                f'{kin.max_reach:.3f}m):\n' + '\n'.join(lines))
         if unreachable:
+            fix = (f'giá đang ở xa quá — dời giá lại gần rồi hiệu chuẩn lại '
+                   f'(./rx150.sh rack-calib); số hiện tại đến từ {self.calib["path"]}'
+                   if self.calib else
+                   'sửa slot0_*/slot_spacing/rack_yaw_deg trong tube_rack_params.yaml')
             self.get_logger().error(
-                f'{unreachable}/{len(self.slots)} slot NGOÀI TẦM — sửa slot0_*/'
-                'slot_spacing/rack_yaw_deg trong tube_rack_params.yaml trước khi chạy.')
+                f'{unreachable}/{len(self.slots)} slot NGOÀI TẦM — {fix} trước khi chạy.')
         return unreachable == 0
 
     # ── chọn slot ───────────────────────────────────────────────────────

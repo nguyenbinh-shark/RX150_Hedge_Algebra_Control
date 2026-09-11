@@ -1,3 +1,28 @@
+# AprilTag dán trên TAY GẮP — dùng cho chuỗi armtag (hiệu chuẩn TF camera,
+# ./rx150.sh calib) và cho pc_filter/RViz ở ./rx150.sh t2.
+#
+# ═══ BẢN ĐỒ ID TAG CỦA HỆ (đổi một chỗ là phải đổi đủ) ═══════════════════
+#   id 1  TAG TAY GẮP  — dán ở cổ tay (rx150/ar_tag_link, con của ee_arm_link)
+#                        khai trong: tags.yaml, apriltag_calib.yaml, ee_tag.yaml
+#   id 0  TAG GIÁ      — dán trên giá đỡ ống nghiệm
+#                        khai trong: rack_tag.yaml, rack_calib.yaml (tag_id)
+# Hai id KHÁC nhau nên mỗi detector chỉ khai id của mình ⇒ không bao giờ nhìn thấy
+# tag của bên kia, dù cả hai cùng nằm trong khung hình. Đây là cách tách ĐÚNG;
+# lọc theo TF (ignore_near_frames trong rack_calib.yaml) chỉ là đường dự phòng cho
+# trường hợp buộc phải dùng chung một id.
+# ════════════════════════════════════════════════════════════════════════
+#
+# ⚠️ 'tag_0' là TÊN (nhãn của frame TF do apriltag publish), KHÔNG phải id. Số khớp
+# với tag in thật là khoá `id` bên dưới. Tên giữ nguyên `tag_0` vì
+# handeye_calibrate.launch.py đang lấy nó làm tracking_marker_frame mặc định.
+#
+# ⚠️ `size` = chiều dài cạnh Ô ĐEN (m), KHÔNG tính viền trắng. Sai size ⇒ sai
+# khoảng cách camera→tag theo đúng tỉ lệ đó.
+#
+# Interbotix armtag lấy detections[0] — tag ĐẦU TIÊN trong khung, KHÔNG lọc theo id
+# (apriltag.py:161 "TODO: support for multiple tags"). An toàn nằm ở chỗ file này
+# chỉ khai MỘT id: detector không báo cáo tag id khác, nên tag giá (id 0) vô hình
+# với chuỗi hiệu chuẩn camera.
 /**:
   ros__parameters:
     tag_family: tag36h11
@@ -5,5 +30,5 @@
       tag_names:
         - tag_0
       tag_0:
-        id: 0
+        id: 1
         size: 0.028

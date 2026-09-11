@@ -59,9 +59,16 @@ def find_src_config(package, filename):
 
 
 def src_config_path(package, filename):
-    """Tính đường dẫn src/<package>/config/<filename> để GHI MỚI (file có thể
-    chưa tồn tại — dùng cho output do tool sinh, vd rx150_gravity_model.yaml).
-    Trả None nếu không suy ra được ws_root (package chưa cài đặt lần nào).
+    """Tính đường dẫn config/<filename> trong cây nguồn của <package> để GHI MỚI
+    (file có thể chưa tồn tại — dùng cho output do tool sinh, vd
+    rx150_gravity_model.yaml). Trả None nếu không suy ra được ws_root (package
+    chưa cài đặt lần nào).
+
+    PHẢI dò cây src/ tìm thư mục package (nhận diện bằng package.xml), KHÔNG
+    được giả định src/<package>/ nằm phẳng ngay dưới src/: sau khi dựng cây
+    phân tầng IRROS, rx150_hac_controller nằm ở src/rx150/controllers/. Bản cũ
+    đoán phẳng nên identify tạo hẳn một thư mục lạc src/rx150_hac_controller/
+    mà colcon không hề thấy — model hiệu chuẩn ghi ra đó là ghi vào hư không.
     """
     try:
         from ament_index_python.packages import get_package_share_directory
@@ -72,7 +79,11 @@ def src_config_path(package, filename):
     if "install" not in parts:
         return None
     ws_root = "/".join(parts[:parts.index("install")])
-    return os.path.join(ws_root, "src", package, "config", filename)
+    src_root = os.path.join(ws_root, "src")
+    for root, _dirs, files in os.walk(src_root):
+        if os.path.basename(root) == package and "package.xml" in files:
+            return os.path.join(root, "config", filename)
+    return os.path.join(src_root, package, "config", filename)
 
 
 # ───────────────────────── CSV schema (46 cột) ──────────────────────────

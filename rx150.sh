@@ -5,22 +5,31 @@
 #
 #   t1        Robot + MoveIt + camera (HẰNG NGÀY — không point cloud, không MoveIt-RViz)
 #   t1-pcl    Như t1 nhưng BẬT point cloud (chỉ khi cần luồng PCL / OctoMap)
+#   t1-hac    Như t1 nhưng dùng bộ điều khiển HAC thay cho fuzzy (A/B)
 #   t2        Perception thường ngày: nạp TF calib (+ RViz)
-#   calib     Phiên HIỆU CHUẨN ArmTag: armtag GUI + RViz (không cần point cloud)
+#   calib     Phiên HIỆU CHUẨN CAMERA (ArmTag): armtag GUI + RViz (không cần point cloud)
+#   rack-calib  HIỆU CHUẨN VỊ TRÍ GIÁ ĐỠ ỐNG NGHIỆM bằng AprilTag -> rack_pose.yaml
+#   rack-gui    KIỂM BẰNG MẮT: RViz + ảnh chồng 4 lỗ lên hình camera (không ghi file)
+#   rack-watch  Theo dõi giá có bị xê dịch không (đo liên tục, KHÔNG ghi file)
+#   rack-pub    Chỉ phát TF tube_rack từ rack_pose.yaml (không cần camera)
 #   tune      Phiên TUNE PCL: pointcloud tuner GUI + RViz (T1 phải là t1-pcl)
+#   eetag     Theo dõi AprilTag trên TAY GẮP (30 fps) — nguồn đo ngoài cho bench
+#   eetag-hold  Bench camera vs encoder vs lệnh trên bộ pose tĩnh (cần eetag)
+#   eetag-watch Như trên nhưng CHỈ GHI, không ra lệnh — dùng khi task đang chạy
 #   tubes     Gắp ống nghiệm (YOLO, Layer 2)
 #   tubes-direct  Như tubes nhưng KHÔNG qua move_group (motion_backend:=direct)
 #   gesture   Gắp vật được chỉ bằng cử chỉ tay (pick_place + hand_gesture)
 #   dry       Gắp ống nghiệm CHẠY THỬ: chỉ IK + log, không cử động
 #   dry-fake  Như dry nhưng bơm 1 ống GIẢ — chạy hết chuỗi khi KHÔNG có camera
 #   all       T1+T2+YOLO trong MỘT terminal (fuzzy_moveit_perception)
-#   test      Bộ test tổng hợp perception (14 test, ~5s)
+#   test      Bộ test offline perception: 14 test YOLO + hình học hiệu chuẩn giá
 #   check     Smoke-test theo tầng: joint_states + action server + TF/detection
 #   reach     Bảng tầm với + kiểm config (KHÔNG cần robot)
 #   diag      Chụp trạng thái để gửi kèm báo lỗi -> diag_<ts>.tar.gz
 #
 # Thứ tự bring-up (chi tiết: src/rx150_pick_place/docs/RUNBOOK.md):
-#   reach → t1 → t2 → check → dry-fake → tubes
+#   reach → t1 → t2 → [rack-calib] → check → dry-fake → tubes
+#   (rack-calib chỉ chạy lại khi giá bị xê dịch — kết quả nằm trong file.)
 #   Hỏng ở bậc nào thì DỪNG ở bậc đó, đừng chạy tiếp.
 #
 # Nguyên tắc tối ưu:
@@ -48,6 +57,22 @@ case "${1:-}" in
         use_moveit_rviz:=false \
         rs_camera_pointcloud_enable:=true
     ;;
+  t1-hac)
+    # Bộ điều khiển thay thế: PD tuyến tính (mặt HAC a/b/c) + Ruckig + bù trọng lực.
+    # Cùng bridge, cùng action /rx150/arm_controller/follow_joint_trajectory, cùng
+    # gripper bridge ⇒ tầng task (tubes/gesture) chạy y hệt, KHÔNG cần đổi cờ gì.
+    # Khác fuzzy ở chỗ gain: HAC dùng a/b/c + u_max (u_max vừa là gain vừa là nắp),
+    # không có Ku. Bù ma sát có sẵn nhưng mặc định = 0 tới khi chạy rx150_friction_id.py.
+    #
+    # gravity_model_file: model lượng giác đã hiệu chuẩn trên phần cứng 2026-09-09
+    # (rx150_gravity_id.py identify, 132 pose). Thay đường Pinocchio+Gff, vốn lệch
+    # hệ thống -53 PWM ở elbow. Bỏ arg này => quay về Pinocchio để so A/B.
+    echo "⚠️  Tay máy sẽ BẬT TORQUE và tự về HOME khi launch. Dọn chỗ quanh robot."
+    exec ros2 launch rx150_hac_controller hac_moveit.launch.py \
+        use_camera_static_tf:=false \
+        use_moveit_rviz:=false \
+        gravity_model_file:=rx150_gravity_model.yaml
+    ;;
   t2)
     exec ros2 launch rx150_perception rx150_perception.launch.py use_rviz:=true
     ;;
@@ -58,12 +83,68 @@ case "${1:-}" in
         use_armtag_tuner_gui:=true \
         use_rviz:=true
     ;;
+  rack-calib|rackcalib)
+    # Hiệu chuẩn VỊ TRÍ GIÁ, cùng khuôn với calib camera nhưng khác đối tượng:
+    #   calib      camera: armtag     → static_transforms.yaml → static_trans_pub
+    #   rack-calib GIÁ:    rack_calib → rack_pose.yaml         → tube_rack_node
+    # Cần T1 (robot + camera) và T2 (TF world<->camera) đang chạy: phép đo này
+    # nằm TRÊN NỀN TF camera — calib camera sai thì đây chỉ chép lại cái sai đó.
+    shift
+    echo "Tag của GIÁ phải nằm trong khung hình camera và không bị che."
+    echo "Thêm rviz:=true để vừa snap vừa soi bằng mắt; hoặc chạy './rx150.sh rack-gui'."
+    echo "Xong: ./rx150.sh reach để kiểm 4 lỗ có với tới được không."
+    exec ros2 launch rx150_perception rack_calib.launch.py mode:=snap "$@"
+    ;;
+  rack-gui|rackgui)
+    # KIỂM BẰNG MẮT trước khi tin vào số. Không ghi đè rack_pose.yaml.
+    #   khung 3D  — marker 4 lỗ + viền giá + trục lỗ, so với model robot
+    #   khung ảnh — 4 lỗ chiếu NGƯỢC lên ảnh camera: vòng tròn trùng lỗ thật = ĐÚNG.
+    #               Đây là phép kiểm đi qua CẢ TF hiệu chuẩn camera lẫn pose tag,
+    #               nên nó bắt được cả lỗi calib camera lẫn lỗi hình học khai sai.
+    # Lục = đang đo. Cam = đã lưu trong file (chỉ hiện khi đã snap ít nhất một lần).
+    shift
+    echo "Lục = nghiệm ĐANG ĐO · Cam = nghiệm đã lưu trong rack_pose.yaml."
+    echo "Nhìn khung ảnh: 4 vòng tròn phải nằm ĐÚNG trên 4 miệng lỗ thật."
+    exec ros2 launch rx150_perception rack_calib.launch.py mode:=watch rviz:=true "$@"
+    ;;
+  rack-watch|rackwatch)
+    # Chỉ đo và in độ lệch so với rack_pose.yaml — KHÔNG ghi đè file.
+    shift
+    exec ros2 launch rx150_perception rack_calib.launch.py mode:=watch "$@"
+    ;;
+  rack-pub|rackpub)
+    # Phát TF tĩnh rx150/base_link -> tube_rack (+ tube_rack/slot0..3) để soi
+    # trong RViz. KHÔNG cần camera. tube_rack_node KHÔNG dùng TF này (nó đọc
+    # thẳng file), nên chạy hay không chạy đều không đổi hành vi gắp.
+    shift
+    exec ros2 launch rx150_perception rack_calib.launch.py mode:=publish "$@"
+    ;;
   tune)
     echo "Tune PCL: T1 phải đang chạy './rx150.sh t1-pcl' (cần point cloud)."
     echo "Xong thì bấm Save Config, Ctrl+C và quay về './rx150.sh t2'."
     exec ros2 launch rx150_perception rx150_perception.launch.py \
         use_pointcloud_tuner_gui:=true \
         use_rviz:=true
+    ;;
+  eetag)
+    # Detector AprilTag LIÊN TỤC cho tag dán trên tay gắp -> /ee_tag/tag_detections.
+    # Không bật driver camera (T1 đang giữ D435i); chỉ đọc ảnh color có sẵn.
+    # Cần: T1 (robot+camera) và T2 (TF hiệu chuẩn world<->camera) đang chạy.
+    echo "Tag phải dán trên tay gắp và NHÌN THẤY được từ camera."
+    echo "Kiểm tra: ros2 topic hz /ee_tag/tag_detections  (0 Hz = không thấy tag)."
+    exec ros2 launch rx150_perception ee_tag.launch.py
+    ;;
+  eetag-hold)
+    # So vị trí tay gắp: lệnh (FK setpoint) vs encoder (TF) vs camera (AprilTag).
+    # Robot SẼ CỬ ĐỘNG qua bộ pose tĩnh rồi về sleep. Kết quả vào tuning_runs/.
+    shift
+    echo "⚠️  Tay máy sẽ đi qua các pose đo rồi về SLEEP. Dọn chỗ quanh robot."
+    exec ros2 run rx150_motion_common rx150_ee_tag_bench.py hold "$@"
+    ;;
+  eetag-watch)
+    # Chỉ quan sát: không publish setpoint, an toàn khi tubes/gesture đang chạy.
+    shift
+    exec ros2 run rx150_motion_common rx150_ee_tag_bench.py watch "$@"
     ;;
   tubes)
     exec ros2 launch rx150_pick_place tube_rack.launch.py
@@ -97,7 +178,13 @@ case "${1:-}" in
         rs_camera_pointcloud_enable:=false
     ;;
   test)
-    exec ros2 run rx150_perception test_yolo_tube_detector.py
+    # Không exec: chạy cả hai bộ rồi tổng kết. Cả hai đều offline.
+    rc=0
+    ros2 run rx150_perception test_yolo_tube_detector.py || rc=1
+    echo
+    echo "════════ hình học hiệu chuẩn giá ════════"
+    ros2 run rx150_perception test_rack_calib.py || rc=1
+    exit $rc
     ;;
   check)
     # Không exec: chạy cả ba rồi tổng kết. Không bài nào phát lệnh tới robot.
@@ -144,8 +231,11 @@ case "${1:-}" in
     exec ./tools/collect_diag.sh "$@"
     ;;
   *)
-    # In khối comment đầu file cho tới dòng trống đầu tiên sau danh sách chế độ.
-    sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+    # In toàn bộ khối chú thích đầu file (dòng 2 -> dòng không-phải-chú-thích
+    # đầu tiên). Bản cũ dùng dải cứng '2,31p' nên lệch mỗi lần chèn thêm chế độ:
+    # nó đang cắt giữa mục "Nguyên tắc tối ưu", giấu mất cảnh báo trùng
+    # yolo_tube_detector. awk tự bám nên không phải sửa lại nữa.
+    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
     exit 1
     ;;
 esac

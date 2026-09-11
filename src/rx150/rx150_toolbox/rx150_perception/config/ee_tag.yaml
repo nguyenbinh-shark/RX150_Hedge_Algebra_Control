@@ -1,0 +1,38 @@
+# AprilTag dán trên TAY GẮP — nguồn đo ngoài cho rx150_ee_tag_bench.py.
+#
+# Khác apriltag_calib.yaml ở hai điểm:
+#   - chạy CONTINUOUS (30 fps) chứ không phải snapshot: cần cả quỹ đạo, không
+#     chỉ một tấm ảnh lúc Snap Pose. armtag/ar_tracker là single-image server
+#     (chỉ nhả tag_detections khi picture_snapper gọi service) nên KHÔNG dùng
+#     lại được cho việc theo dõi.
+#   - tên tag là 'ee_tag' (không phải 'tag_0') để TF do detector này phát
+#     không đụng frame tag_0 mà chuỗi armtag dùng khi hiệu chuẩn. CÙNG một tấm
+#     tag vật lý, nên `id` phải khớp tags.yaml + apriltag_calib.yaml.
+#
+# size PHẢI đúng chiều dài cạnh Ô ĐEN của tag in thật (m). Sai size => sai
+# khoảng cách camera→tag theo đúng tỉ lệ đó: in 30mm mà khai 28mm là lệch ~7%,
+# ở tầm 0.5 m thành ~35 mm — lớn hơn mọi sai số điều khiển đang đo.
+/**:
+  ros__parameters:
+    tag_family: 'tag36h11'
+    tag_threads: 2
+    tag_decimate: 1.0          # 1.0 = không giảm mẫu ảnh: chính xác nhất
+    tag_blur: 0.0
+    tag_refine_edges: 1
+    tag_debug: 0
+    max_hamming_dist: 2
+    publish_tf: true           # camera_color_optical_frame -> ee_tag (xem được trong RViz)
+    transport_hint: 'raw'
+    publish_tag_detections_image: false
+
+    standalone_tags:
+      tag_names: ['ee_tag']
+      ee_tag:
+        id: 1
+        size: 0.028
+# KHÔNG khai 'tag_bundles: {bundle_names: []}' ở đây: rclcpp không suy được kiểu
+# của list RỖNG nên node chết ngay lúc khởi động với
+#   InvalidParameterValueException: parameter_value_from failed for parameter
+#   'tag_bundles.bundle_names': No parameter value set
+# (apriltag_calib.yaml dùng cho hand-eye đang dính đúng lỗi này). Node tự declare
+# bundle_names rỗng khi param vắng mặt — bỏ trống là cách đúng.

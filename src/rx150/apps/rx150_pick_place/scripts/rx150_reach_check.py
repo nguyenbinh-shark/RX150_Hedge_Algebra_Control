@@ -57,6 +57,37 @@ def params_of(doc):
     return {}
 
 
+def load_rack_calib(params):
+    """Hình học giá đo bằng AprilTag (rack_pose.yaml), nếu tube_rack_params trỏ tới.
+
+    Bỏ qua bước này thì `./rx150.sh reach` chấm điểm đúng bộ số mà tube_rack_node
+    KHÔNG dùng — báo GO cho một cái giá tưởng tượng.
+    """
+    import os
+    import yaml
+    raw = str(params.get('rack_calib_file', '') or '').strip()
+    if not raw:
+        return None
+    path = raw
+    if not os.path.isabs(path):
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            path = os.path.join(get_package_share_directory('rx150_perception'),
+                                'config', raw)
+        except Exception:                                  # noqa: BLE001
+            return None
+    if not os.path.exists(path):
+        return None
+    with open(path, 'r', encoding='utf-8') as handle:
+        doc = yaml.safe_load(handle) or {}
+    slots = [[float(c) for c in item] for item in (doc.get('slots') or [])]
+    if not slots:
+        return None
+    axis = [float(v) for v in (doc.get('slot_axis') or [0.0, 0.0, 1.0])]
+    norm = math.sqrt(sum(v * v for v in axis)) or 1.0
+    return {'slots': slots, 'axis': [v / norm for v in axis], 'path': path}
+
+
 def check_config(kin, path):
     import yaml
     with open(path, 'r', encoding='utf-8') as handle:
@@ -76,7 +107,22 @@ def check_config(kin, path):
         all_ok &= check_point(kin, px, py, pz + float(params.get('place_approach_delta', 0.08)),
                               pitch_deg, 'thả (hover)')
 
-    if 'slot0_x' in params:
+    calib = load_rack_calib(params)
+    if calib:
+        print(f'  (hình học giá lấy từ HIỆU CHUẨN {calib["path"]}, '
+              'không phải slot0_* trong file này)')
+        length = float(params.get('tube_length', 0.10))
+        depth = float(params.get('insert_depth', 0.03))
+        clearance = float(params.get('hover_clearance', 0.04))
+        ax, ay, az = calib['axis']
+        tilt_deg = math.degrees(math.acos(max(-1.0, min(1.0, az))))
+        along = length / 2.0 - depth
+        for k, (sx, sy, sz) in enumerate(calib['slots']):
+            ix, iy, iz = sx + ax * along, sy + ay * along, sz + az * along
+            all_ok &= check_point(kin, ix, iy, iz, tilt_deg, f'slot {k} (cắm)')
+            all_ok &= check_point(kin, ix, iy, iz + clearance, tilt_deg,
+                                  f'slot {k} (hover)')
+    elif 'slot0_x' in params:
         n = int(params.get('num_slots', 4))
         yaw = math.radians(float(params.get('rack_yaw_deg', params.get('rack_angle_deg', 0.0))))
         tilt = math.radians(float(params.get('rack_tilt_deg', 0.0)))

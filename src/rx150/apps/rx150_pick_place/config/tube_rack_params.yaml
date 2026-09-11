@@ -37,8 +37,22 @@
     # node tự dựng ladder quanh góc nghiêng đó.
     place_pitch_ladder: [0.0, 0.15, 0.30, -0.15]
 
-    # ══ HÌNH HỌC GIÁ (đo bằng thước hoặc bằng chính ống đã cắm sẵn) ═════
-    # slot0_*: toạ độ MIỆNG LỖ của slot đầu tiên, frame rx150/base_link.
+    # ══ HÌNH HỌC GIÁ ═══════════════════════════════════════════════════
+    # HAI NGUỒN — file hiệu chuẩn THẮNG, đo thước là đường dự phòng.
+    #
+    # (a) rack_calib_file: kết quả rack_calib_node đo bằng AprilTag dán trên giá
+    #     (rx150_perception/config/rack_pose.yaml). Tả đủ 4 lỗ ở 4 ĐỈNH hình chữ
+    #     nhật 120 × 50 mm + TRỤC LỖ thật, nên mọi khoá slot0_*/slot_spacing/
+    #     rack_yaw_deg/rack_tilt_deg/num_slots/rack_box_* bên dưới BỊ BỎ QUA khi
+    #     file tồn tại. Node in rõ nguồn nào đang dùng lúc khởi động.
+    #     Hiệu chuẩn / hiệu chuẩn lại:  ./rx150.sh rack-calib
+    #     Kiểm giá có bị xê dịch:       ./rx150.sh rack-watch
+    #     Đặt '' để tắt hẳn đường này và ép dùng số đo thước.
+    rack_calib_file: rack_pose.yaml
+    #
+    # (b) đo bằng thước (hoặc bằng chính ống đã cắm sẵn) — chỉ tả được MỘT HÀNG
+    #     slot thẳng. slot0_*: toạ độ MIỆNG LỖ của slot đầu tiên, frame
+    #     rx150/base_link.
     slot0_x: 0.26
     slot0_y: -0.075
     slot0_z: 0.10
@@ -69,7 +83,10 @@
                                 # (key_point: x−0.05 rồi mới về home)
     via_staging: true           # ghé cột thẳng đứng trên tư thế trung
                                 # chuyển trước khi vươn ra chỗ thả/giá
-    min_ee_z: 0.015
+    # 0.015 cao hơn TÂM ống NẰM NGANG (bán kính 8.5mm ⇒ tâm ≈ 0.009; detector
+    # đo 0.010) nên mọi lần gắp đều kẹp hụt — cùng lỗi đã đo trên bàn thật
+    # 2026-09-09 và đã sửa trong pick_place_params.yaml. Đồng bộ về 0.010.
+    min_ee_z: 0.010
     object_radius: 0.0085       # bán kính ống (attach vào planning scene)
 
     # ══ tốc độ ══════════════════════════════════════════════════════════

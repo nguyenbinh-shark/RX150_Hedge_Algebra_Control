@@ -16,7 +16,11 @@
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
   <exec_depend>std_srvs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <!-- Interbotix SDK + perception modules (chuẩn upstream) -->
   <exec_depend>interbotix_common_modules</exec_depend>

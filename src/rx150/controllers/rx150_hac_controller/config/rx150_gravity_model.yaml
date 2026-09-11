@@ -1,0 +1,21 @@
+# Sinh tự động bởi rx150_gravity_id.py (mode identify) — SỬA bằng cách chạy lại
+# identify, KHÔNG sửa tay hệ số. Xem model_fit.json cùng thư mục run để có đầy đủ
+# R²/residual/provenance.
+# generated: 20260909_182815  n_samples: 132
+# motor_temp_c_start: [44, 39, 38, 41, 42]  motor_temp_c_end: [43, 40, 39, 43, 41]
+# payload: gripper tiêu chuẩn, ngón MỞ, KHÔNG cầm vật. RealSense gắn giá ngoài
+#   (world -> camera_color_optical_frame là TF tĩnh, camera không nằm trên tay)
+#   nên không tính vào tải. Gắn thêm tải lên tay => phải chạy lại identify.
+# gains lúc hiệu chuẩn: rx150_hac_gains_safe.yaml (u_max [500,600,500,400,400],
+#   v<=0.5 rad/s). Kp = 2c/3a = 2667 PWM/rad không phụ thuộc u_max nên model dùng
+#   được với cả rx150_hac_gains.yaml.
+# đo trên phần cứng: residual RMS PWM giảm 78.0->35.4 (shoulder), 122.3->60.2
+#   (elbow), 94.0->44.3 (wrist_angle); R² held-out 0.887/0.815/0.925.
+# GIỚI HẠN: sai số xác lập còn lại KHÔNG phải do trọng lực mà do trễ ma sát tĩnh
+#   (±0.44° shoulder, ±1.30° elbow, ±1.07° wrist_angle — đo bằng cách tiếp cận
+#   cùng tư thế từ hai phía, sai số ĐẢO DẤU). Chỉ friction_coulomb/friction_viscous
+#   (rx150_friction_id.py) mới hạ được, hiện vẫn là [0,0,0,0,0].
+/rx150/hac_node:
+  ros__parameters:
+    gravity_model_source: "fitted"
+    fitted_gravity_coeffs: [-22.3876, -182.293, -96.9938, 0.268705, -44.1521, -4.89507, -94.7116, -1.5274, -28.818, 2.153, -97.2805, -7.94958]

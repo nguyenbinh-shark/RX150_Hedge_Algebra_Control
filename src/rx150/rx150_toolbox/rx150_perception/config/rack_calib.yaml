@@ -1,0 +1,89 @@
+# Tham số HIỆU CHUẨN GIÁ ĐỠ ỐNG NGHIỆM (rack_calib_node).
+#
+# Đây là file ĐẦU VÀO — mô tả giá trông như thế nào so với tag. Kết quả đo ra
+# nằm ở rack_pose.yaml (node tự ghi, đừng sửa tay).
+#
+#   rack_calib.yaml  (hình học giá, tay người viết)
+#         +  camera  →  rack_calib_node  →  rack_pose.yaml  →  tube_rack_node
+#   rack_tag.yaml    (id + size tag)
+#
+# Chạy:  ./rx150.sh rack-calib     (snap, ghi file)
+#        ./rx150.sh rack-watch     (theo dõi trôi, không ghi)
+#        ./rx150.sh rack-pub       (chỉ phát TF từ file — không cần camera)
+/**:
+  ros__parameters:
+    mode: snap                       # snap | publish | watch (launch tự đặt)
+
+    # ══ nguồn đo ════════════════════════════════════════════════════════
+    detections_topic: /rack_tag/tag_detections
+    tag_id: 0                        # PHẢI khớp id trong rack_tag.yaml.
+                                     # ⚠️ id 0 TRÙNG tag calib camera + tag tay gắp:
+                                     # lúc snap giá, đừng để hai tag kia trong khung
+                                     # hình (xem đầu rack_tag.yaml).
+    base_frame: rx150/base_link      # khung mà tube_rack_node làm việc
+    rack_frame: tube_rack            # tên frame TF sẽ phát ra
+    samples: 30                      # ~1.5 s ở 30 fps sau khi giãn mẫu
+    sample_period_s: 0.05            # giãn mẫu: 30 mẫu là 30 FRAME KHÁC nhau,
+                                     # không phải 30 lần đọc cùng một frame
+    sample_timeout_s: 25.0
+
+    # ── lọc dự phòng: loại tag TAY GẮP theo TF ─────────────────────────
+    # TẮT (mảng rỗng) vì hai tag đã dùng HAI id khác nhau — id 1 cho tay gắp, id 0
+    # cho giá — nên detector của giá không bao giờ báo cáo tag tay gắp. Tách bằng
+    # id là cách đúng; lọc theo TF chỉ là đường vòng.
+    #
+    # Bật lại KHI VÀ CHỈ KHI buộc phải cho hai tag dùng chung một id:
+    #   ignore_near_frames: '["rx150/ar_tag_link", "rx150/ee_gripper_link"]'
+    # Tag tay gắp là con của rx150/ee_arm_link nên TF luôn biết nó ở đâu; ứng viên
+    # rơi trong ignore_radius_m quanh các frame đó sẽ bị loại. Cái giá phải trả:
+    #   • cần T1 (robot_state_publisher) chạy mới có frame để so;
+    #   • tay máy đứng ngay trên giá lúc snap ⇒ chính tag GIÁ bị loại nhầm.
+    ignore_near_frames: '[]'
+    ignore_radius_m: 0.08
+    warn_spread_mm: 3.0              # tản mát vị trí quá ngưỡng ⇒ cảnh báo
+    warn_spread_deg: 1.5             # tản mát hướng quá ngưỡng ⇒ cảnh báo
+
+    # ══ HÌNH HỌC GIÁ trong KHUNG TAG ════════════════════════════════════
+    # 4 lỗ ở 4 ĐỈNH hình chữ nhật; tag ở TRUNG ĐIỂM CẠNH DÀI GẦN:
+    #
+    #     xa   (2)─────────────────(3)      v = rect_short_m
+    #           │                   │
+    #           │        ▲ v        │
+    #     gần   (0)──────┼────────(1)       u = ±rect_long_m/2
+    #                   TAG ──► u
+    #
+    # Khung tag của apriltag_ros: nhìn THẲNG vào mặt tag thì x sang phải, y LÊN,
+    # z hướng ra phía người nhìn (common_functions.cpp:260 — đã đổi khỏi quy ước
+    # "y down" của AprilTag gốc). Nên tag dán ngửa trên mặt giá ⇒ mount = top_flat
+    # và khung giá TRÙNG khung tag: +x dọc cạnh dài, +y ra cạnh xa, +z là trục lỗ.
+    mount: top_flat                  # top_flat | front_vertical
+    rect_long_m: 0.120               # cạnh dài (2 lỗ cách nhau 120 mm)
+    rect_short_m: 0.050              # cạnh ngắn (từ cạnh có tag sang cạnh xa)
+    hole_z_offset_m: 0.0             # miệng lỗ cao hơn MẶT PHẲNG TAG bao nhiêu.
+                                     # Tag dán ngay trên mặt giá ⇒ 0. Tag dán trên
+                                     # mặt đứng phía trước (front_vertical) ⇒ đây
+                                     # là chiều cao từ tâm tag lên mặt giá.
+    yaw_offset_deg: 0.0              # tag dán quay ngược ⇒ 180. ĐỪNG đảo dấu từng
+                                     # trục: đảo một trục là phép PHẢN CHIẾU, dán
+                                     # không ra được; đảo hai trục = quay 180°.
+    hole_offsets: "[]"               # ĐÈ HẲN hình chữ nhật khi giá không đối xứng.
+                                     # JSON [[u,v,h], …] (m) trong khung giá, ví dụ
+                                     # '[[-0.06,0,0],[0.06,0,0],[-0.06,0.05,0],[0.06,0.05,0]]'
+    slot_index_map: [0, 1, 2, 3]     # đổi thứ tự slot mà KHÔNG đụng hình học.
+                                     # Thứ tự sinh: gần-trái, gần-phải, xa-trái, xa-phải.
+                                     # color_slot_map trong tube_rack_params.yaml
+                                     # trỏ theo chỉ số SAU khi ánh xạ này.
+
+    # ══ hộp vật cản suy ra cho planning scene ══════════════════════════
+    box_margin_m: 0.01               # nới bao hình 4 lỗ ra mỗi bên (âm = thu vào)
+    box_below_m: 0.10                # thân giá đặc bên dưới miệng lỗ
+    box_above_m: 0.0                 # 0 = nóc hộp đúng mặt phẳng miệng lỗ, không
+                                     # chắn đường cắm từ trên xuống
+
+    # ══ đầu ra ══════════════════════════════════════════════════════════
+    output_path: ''                  # rỗng = <src>/rx150_perception/config/rack_pose.yaml
+                                     # (node tự lần theo symlink install→src, và
+                                     #  chép thêm một bản vào share/ để dùng ngay)
+    publish_after_snap: true         # phát luôn TF sau khi snap để soi trong RViz
+    exit_after_snap: false           # true = ghi xong thoát (dùng trong script)
+    watch_rate_hz: 1.0

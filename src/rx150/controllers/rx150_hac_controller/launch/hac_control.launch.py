@@ -16,7 +16,8 @@ from interbotix_xs_modules.xs_launch import (
 )
 
 
-def _launch_hac_node(context, robot_description, gains_file, gravity_model_file):
+def _launch_hac_node(context, robot_description, gains_file, gravity_model_file,
+                     enable_gravity_comp):
     # Resolve LaunchConfiguration -> string tại thời điểm launch (không thể
     # if/else trực tiếp trên substitution chưa resolve).
     gains_file_str = context.perform_substitution(gains_file)
@@ -39,6 +40,14 @@ def _launch_hac_node(context, robot_description, gains_file, gravity_model_file)
         node_params.append(gravity_model_path)
     node_params.append({'robot_description': robot_description})
 
+    # enable_gravity_comp KHÔNG nằm trong onParamChange của hac_node (chỉ a/b/c,
+    # u_max, Gff, friction_*, fitted_gravity_coeffs là live) => `ros2 param set`
+    # không ăn, phải override lúc launch. Bước B0 signcheck của rx150_gravity_id.py
+    # bắt buộc chạy với false, nếu không nó tự hủy.
+    egc_str = context.perform_substitution(enable_gravity_comp)
+    if egc_str:
+        node_params.append({'enable_gravity_comp': egc_str.lower() == 'true'})
+
     hac_node = Node(
         package='rx150_hac_controller',
         executable='hac_node',
@@ -55,6 +64,7 @@ def generate_launch_description():
     robot_description = LaunchConfiguration('robot_description')
     gains_file = LaunchConfiguration('gains_file')
     gravity_model_file = LaunchConfiguration('gravity_model_file')
+    enable_gravity_comp = LaunchConfiguration('enable_gravity_comp')
 
     # Action 1 — bring up the xsarm driver/stack for the rx150, using our motor config.
     xsarm_launch = os.path.join(
@@ -81,7 +91,8 @@ def generate_launch_description():
     # Action 2 — HAC controller node (namespace 'rx150' -> relative topics become /rx150/...).
     hac_node_setup = OpaqueFunction(
         function=lambda context: _launch_hac_node(
-            context, robot_description, gains_file, gravity_model_file))
+            context, robot_description, gains_file, gravity_model_file,
+            enable_gravity_comp))
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -109,6 +120,16 @@ def generate_launch_description():
                 'Tên file rx150_gravity_model.yaml (do rx150_gravity_id.py mode identify sinh '
                 'ra, trong rx150_hac_controller/config) để nạp gravity_model_source=fitted + '
                 'fitted_gravity_coeffs. Để trống -> dùng Pinocchio mặc định.'
+            ),
+        ),
+        DeclareLaunchArgument(
+            'enable_gravity_comp',
+            default_value='',
+            choices=('', 'true', 'false'),
+            description=(
+                'Đè enable_gravity_comp của gains_file. Để trống -> giữ giá trị trong '
+                'gains_file. BẮT BUỘC false khi chạy rx150_gravity_id.py mode signcheck '
+                '(param này không live-tunable, ros2 param set sẽ không ăn).'
             ),
         ),
         xsarm,

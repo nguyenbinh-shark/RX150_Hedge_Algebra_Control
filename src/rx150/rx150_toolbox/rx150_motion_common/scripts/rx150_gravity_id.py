@@ -38,7 +38,7 @@ CHẠY (hac_node phải đang chạy, torque ON, PWM mode, gains_safe khuyến n
   ros2 run rx150_motion_common rx150_gravity_id.py plan --out grid.json
   ros2 run rx150_motion_common rx150_gravity_id.py identify --grid grid.json
   ros2 run rx150_motion_common rx150_gravity_id.py validate \\
-      --model ~/interbotix_ws/src/rx150_hac_controller/config/rx150_gravity_model.yaml \\
+      --model src/rx150/controllers/rx150_hac_controller/config/rx150_gravity_model.yaml \\
       --grid grid.json
 
 AN TOÀN: nạp `gains_file:=rx150_hac_gains_safe.yaml` trước khi chạy identify/
@@ -73,8 +73,29 @@ except ImportError:
 
 HAC_SETPOINT_TOPIC = "/rx150/hac/setpoint"
 HAC_NODE = "/rx150/hac_node"
-MOTOR_YAML = os.path.expanduser(
-    "~/interbotix_ws/src/rx150_motion_common/config/rx150_motor.yaml")
+
+
+def _motor_yaml():
+    """config/rx150_motor.yaml: ưu tiên bản đã cài, fallback cây nguồn.
+
+    Bản cũ hardcode ~/interbotix_ws/src/rx150_motion_common/config/... — đường
+    dẫn đó chết khi package dời vào src/rx150/rx150_toolbox/ (refactor IRROS),
+    làm plan/identify/validate ném FileNotFoundError ngay dòng đầu. Cùng cách
+    làm với rx150_friction_id.py.
+    """
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        p = os.path.join(get_package_share_directory("rx150_motion_common"),
+                         "config", "rx150_motor.yaml")
+        if os.path.isfile(p):
+            return p
+    except Exception:
+        pass
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "..", "config", "rx150_motor.yaml")
+
+
+MOTOR_YAML = _motor_yaml()
 DEFAULT_OUT_DIR = os.path.expanduser("~/interbotix_ws/tuning_runs")
 
 SETTLE_VEL_THRESH = 0.02   # rad/s
@@ -497,7 +518,11 @@ def fit_gravity_model(rows):
         nb = BASIS_SIZE[jn]
         beta_pwm_basis = fit_pwm["beta"][:nb]
         beta_eff_basis = fit_eff["beta"][:nb]
-        gff_equiv = [
+        # PWM trên MỘT ĐƠN VỊ joint_states.effort (= Present_Load×2.69, mô-men
+        # TƯƠNG ĐỐI — xem tuning_lib.latest_measured_load), KHÔNG phải PWM/N·m:
+        # cả tử lẫn mẫu đều fit trên cùng bộ pose, mẫu ở đơn vị load thô. Muốn so
+        # với ngưỡng datasheet XL430 (~590 PWM/N·m) phải quy đổi load -> N·m trước.
+        pwm_per_load = [
             (bp / be) if abs(be) > 1e-9 else float("nan")
             for bp, be in zip(beta_pwm_basis, beta_eff_basis)
         ]
@@ -508,8 +533,8 @@ def fit_gravity_model(rows):
             "fit_effort": fit_eff,
             "stiction_bias_pwm": fit_pwm["beta"][-1],
             "stiction_bias_effort": fit_eff["beta"][-1],
-            "gff_equivalent_per_term": gff_equiv,
-            "gff_equivalent_mean_abs": float(np.nanmean(np.abs(gff_equiv))),
+            "pwm_per_load_unit_per_term": pwm_per_load,
+            "pwm_per_load_unit_mean_abs": float(np.nanmean(np.abs(pwm_per_load))),
         }
 
     result["fitted_gravity_coeffs_pwm"] = coeffs12_pwm
@@ -574,8 +599,23 @@ def cmd_identify(args):
               f"heldout={r['fit_pwm']['r2_heldout']:.3f}  "
               f"R²(eff) train={r['fit_effort']['r2_train']:.3f} "
               f"heldout={r['fit_effort']['r2_heldout']:.3f}  "
-              f"Gff_equiv~{r['gff_equivalent_mean_abs']:.1f} PWM/N·m "
-              f"(ngưỡng datasheet XL430 ~590)")
+              f"PWM/đơn-vị-load~{r['pwm_per_load_unit_mean_abs']:.2f}")
+
+    # stiction_bias_pwm là con số quyết định sàn sai số xác lập: nó BỊ LOẠI khỏi
+    # model triển khai (đúng — nó phụ thuộc hướng tiếp cận, không phải trọng
+    # lực), nên phần đó ở lại dưới dạng trễ. Kp = 2c/(3a) của mặt HAC.
+    kp_node = rclpy.create_node("rx150_gravity_id_kp")
+    a_p = get_param(kp_node, HAC_NODE, "a")
+    c_p = get_param(kp_node, HAC_NODE, "c")
+    kp_node.destroy_node()
+    if a_p and c_p:
+        kp = 2.0 * c_p / (3.0 * a_p)
+        print(f"\nSàn sai số do ma sát tĩnh (Kp={kp:.0f} PWM/rad, KHÔNG hiệu chuẩn "
+              f"gravity nào chạm tới — cần rx150_friction_id.py):")
+        for jn in GRAVITY_JOINTS:
+            bias = abs(fit["joints"][jn]["stiction_bias_pwm"])
+            print(f"  {jn:<14} ±{bias:6.1f} PWM  ->  ±{math.degrees(bias / kp):.2f}° trễ "
+                  f"theo hướng tiếp cận")
 
     model_path = tl.src_config_path("rx150_hac_controller", "rx150_gravity_model.yaml")
     if model_path:

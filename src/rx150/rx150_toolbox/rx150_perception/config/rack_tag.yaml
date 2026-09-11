@@ -1,0 +1,42 @@
+# AprilTag dán trên GIÁ ĐỠ ỐNG NGHIỆM — nguồn đo cho rack_calib_node.
+#
+# Cùng khuôn với ee_tag.yaml (detector LIÊN TỤC, không phải snapshot server của
+# armtag), khác ở hai chỗ:
+#   - tên tag là 'rack_tag' để TF do detector này phát KHÔNG đụng frame 'tag_0'
+#     mà chuỗi armtag dùng khi hiệu chuẩn camera, cũng không đụng 'ee_tag'.
+#   - id KHÁC id của tag tay gắp. Đây là cách tách hai tag ĐÚNG đắn: mỗi detector
+#     chỉ khai id của mình nên không bao giờ báo cáo tag của bên kia, dù cả hai
+#     cùng nằm trong khung hình.
+#
+#   id 1 = TAG TAY GẮP (tags.yaml, apriltag_calib.yaml, ee_tag.yaml)
+#   id 0 = TAG GIÁ     (file này + tag_id trong rack_calib.yaml)
+#
+# ⚠️ HAI SỐ PHẢI ĐÚNG VỚI TAG IN THẬT, không có cách nào đoán hộ:
+#   id   — số in trên tag của giá (0). Đổi thì sửa LUÔN tag_id trong rack_calib.yaml.
+#   size — chiều dài cạnh Ô ĐEN (m), KHÔNG phải cả tờ giấy có viền trắng
+# Sai size ⇒ sai khoảng cách camera→tag theo ĐÚNG tỉ lệ đó: khai 28 mm cho tag
+# in 30 mm là lệch ~7%, ở tầm 0.5 m thành ~35 mm — đủ để trượt miệng lỗ.
+#
+# Đổi id ở đây thì PHẢI đổi luôn tag_id trong rack_calib.yaml (hai file, một số).
+/**:
+  ros__parameters:
+    tag_family: 'tag36h11'
+    tag_threads: 2
+    tag_decimate: 1.0          # 1.0 = không giảm mẫu ảnh: chính xác nhất
+    tag_blur: 0.0
+    tag_refine_edges: 1
+    tag_debug: 0
+    max_hamming_dist: 2
+    publish_tf: true           # camera_color_optical_frame -> rack_tag (soi trong RViz)
+    transport_hint: 'raw'
+    publish_tag_detections_image: false
+
+    standalone_tags:
+      tag_names: ['rack_tag']
+      rack_tag:
+        id: 0
+        size: 0.028
+# KHÔNG khai 'tag_bundles: {bundle_names: []}' ở đây: rclcpp không suy được kiểu
+# của list RỖNG nên node chết ngay lúc khởi động với
+#   InvalidParameterValueException: ... 'tag_bundles.bundle_names': No parameter value set
+# Node tự declare bundle_names rỗng khi param vắng mặt — bỏ trống là cách đúng.

@@ -132,6 +132,14 @@ ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link
 
 Không ra số ⇒ mọi thứ ở tầng nhận diện đều vô nghĩa, đừng đi tune `conf_threshold`.
 
+**Các frame AprilTag KHÔNG nằm trong luật này.** `rack_tag`, `ee_tag`, `tube_rack`,
+`tube_rack/slot*` đều là frame **lá** (con của `camera_color_optical_frame` hoặc của
+`rx150/base_link`), không ai khác phát chúng, nên chạy `rack-calib` / `eetag` song song
+với `t2` là an toàn. Chỉ cạnh `world ↔ camera` mới bị giới hạn một nguồn.
+
+Ngược lại: các phép đo bằng tag **nằm trên nền** TF camera. Calib camera sai ⇒
+`rack_pose.yaml` chỉ chép lại đúng cái sai đó. Luôn xong B2 trước B2b.
+
 ---
 
 ## 3. Bản đồ hệ thống
@@ -172,6 +180,10 @@ toàn cục — là `/move_group`, không phải `/rx150/move_group`).
       /hand_gesture        ──► /hand_gesture/selected_target (Int32)
                            ──► /hand_gesture/event (String, "ok_sign")
       /static_trans_pub    ──► TF camera_color_optical_frame → world
+      /rack_tag            ──► /rack_tag/tag_detections (chỉ trong phiên hiệu chuẩn giá)
+      /rack_calib          ──► rack_pose.yaml + TF rx150/base_link → tube_rack
+                           ──► /rack_calib/markers (4 lỗ, viền giá, trục lỗ)
+                           ──► /rack_calib/image_debug (4 lỗ chiếu ngược lên ảnh)
 
 [L5]  /tube_rack  |  /pick_place_moveit
         ──► /tube_rack/status  (String JSON: state, detail, attempted, succeeded,
@@ -191,6 +203,7 @@ tiên tính từ dưới lên** mà dữ liệu không đi qua. Thang bậc §4 
 | B0 | Toán học + config | Không | pytest 20/20; `rx150_reach_check` exit 0 cả 2 config |
 | B1 | Driver + TF | Có | `/rx150/joint_states` ~100 Hz, 6 khớp; không frame 2 cha |
 | B2 | Camera + TF calib | Có | color + aligned_depth có hz; `tf2_echo` ra số ổn định |
+| B2b | Vị trí giá (tùy chọn) | Có | `rack_pose.yaml` có 4 lỗ, tản mát ≤ 3 mm; `reach` exit 0 |
 | B3 | Nhận diện | Có | `/yolo/detected_tubes` frame `rx150/base_link`, khớp thước ±1 cm |
 | B4 | Chuyển động khô | dry_run | Chạy hết state machine, đủ waypoint, không gửi goal |
 | B5 | Chuyển động thật, tay không | Có | `~/home`, `~/open_gripper` đúng |
@@ -200,7 +213,8 @@ tiên tính từ dưới lên** mà dữ liệu không đi qua. Thang bậc §4 
 
 ```bash
 source ~/interbotix_ws/source_all.sh
-cd ~/interbotix_ws/src/rx150_pick_place && python3 -m pytest test -q    # 20 passed
+# Test đã dời sang rx150_modules khi tách tầng Application Support.
+python3 -m pytest src/rx150/rx150_toolbox/rx150_modules/test -q        # 20 passed
 cd ~/interbotix_ws && ./rx150.sh reach                                 # gộp cả 3 lệnh dưới
 ```
 
@@ -275,6 +289,132 @@ ros2 run tf2_ros tf2_echo camera_color_optical_frame rx150/base_link
 Cần hiệu chuẩn lại (đã xê dịch camera): `./rx150.sh calib`, đưa AprilTag vào khung
 hình, đặt Snapshots = 10, bấm **Snap Pose**. Kết quả tự ghi vào `static_transforms.yaml`.
 Xong thì Ctrl+C và quay về `./rx150.sh t2` — đừng để GUI mở lâu (rò timer 20 Hz).
+
+### B2b — vị trí giá đỡ ống nghiệm (chỉ khi giá đã dán AprilTag)
+
+Cùng khuôn với B2, khác đối tượng đo:
+
+| | đo cái gì | công cụ | file kết quả | ai đọc file |
+|---|---|---|---|---|
+| B2 | camera ở đâu | armtag GUI | `static_transforms.yaml` | `static_trans_pub` → TF |
+| B2b | **giá ở đâu** | `rack_calib` | `rack_pose.yaml` | `tube_rack_node` (đọc thẳng) |
+
+**Nhìn trước, tin sau.** Bước đầu tiên là mở GUI, KHÔNG ghi file gì:
+
+```bash
+./rx150.sh rack-gui          # T3 — T1 + T2 phải đang chạy. Không ghi đè gì cả.
+```
+
+RViz mở ra hai khung:
+
+| Khung | Trả lời câu hỏi |
+|---|---|
+| 3D (marker `/rack_calib/markers`) | 4 lỗ tính ra nằm đúng chỗ so với robot chưa |
+| Ảnh (`/rack_calib/image_debug`) | **4 lỗ đó chiếu ngược lên ảnh camera có TRÙNG lỗ thật không** |
+
+Khung ảnh mới là bằng chứng thật: nó đi qua **cả** TF hiệu chuẩn camera, **cả** pose
+tag, **cả** hình học khai trong `rack_calib.yaml`. Bốn vòng tròn nằm khít 4 miệng lỗ
+⇒ toàn chuỗi đúng. Lệch đều một hướng ⇒ calib camera (B2). Lệch kiểu xoay/gương ⇒
+hình học khai sai (`yaw_offset_deg`, `slot_index_map`).
+
+**Lục = nghiệm đang đo. Cam = nghiệm đã lưu trong `rack_pose.yaml`.** Hai bộ chồng
+khít nhau nghĩa là giá chưa xê dịch từ lần hiệu chuẩn trước; tách ra bao nhiêu thì
+dòng `lech live vs file: … mm` trên góc ảnh nói thẳng.
+
+Nhìn thấy 4 vòng tròn đúng chỗ rồi mới snap:
+
+```bash
+./rx150.sh rack-calib             # ghi rack_pose.yaml
+./rx150.sh rack-calib rviz:=true  # vừa snap vừa soi
+```
+
+> **Bản đồ id tag của hệ** — đổi một chỗ là phải đổi đủ:
+>
+> | id | Tag | Khai trong |
+> |---|---|---|
+> | **1** | tay gắp (`rx150/ar_tag_link`, con của `ee_arm_link`) | `tags.yaml`, `apriltag_calib.yaml`, `ee_tag.yaml` |
+> | **0** | giá đỡ ống nghiệm | `rack_tag.yaml`, `rack_calib.yaml` (`tag_id`) |
+>
+> Hai id khác nhau nên mỗi detector chỉ khai id của mình ⇒ **không bao giờ nhìn thấy
+> tag của bên kia**, dù cả hai cùng nằm trong khung hình. Đây cũng là thứ giữ an
+> toàn cho `./rx150.sh calib`: Interbotix armtag lấy `detections[0]` — tag **đầu
+> tiên** trong khung, **không** lọc theo id (`apriltag.py:161`, `TODO: support for
+> multiple tags`); nó chỉ an toàn vì `tags.yaml` khai đúng một id.
+>
+> `rack_calib` còn một lọc dự phòng theo TF (`ignore_near_frames`) cho trường hợp
+> buộc phải cho hai tag dùng chung id — mặc định **TẮT**, xem `rack_calib.yaml`.
+
+Tag phải nằm trong khung hình và không bị che. Node lấy ~30 mẫu (~1,5 s), lấy **trung
+vị** vị trí + **trung bình quaternion**, rồi in bảng 4 miệng lỗ trong `rx150/base_link`
+và ghi `rx150_perception/config/rack_pose.yaml`.
+
+**GO:** tản mát vị trí ≤ 3 mm, tản mát góc ≤ 1,5°, 4 miệng lỗ khớp thước trong ±5 mm.
+
+**NO-GO thường gặp:**
+
+| Log | Nguyên nhân |
+|---|---|
+| `KHÔNG có frame nào trên /rack_tag/tag_detections` | detector chưa lên, hoặc thiếu remap `~/image_rect` |
+| `thấy tag id [1] nhưng cấu hình đang đòi id 0` | đang chĩa vào tag TAY GẮP chứ không phải tag giá — đưa giá vào khung hình |
+| `Còn 2 tag id 0 … — BỎ khung này` | có tag id 0 thứ hai trong khung (dán nhầm / in trùng) — cất đi rồi snap lại |
+| `TF rx150/base_link←camera_color_optical_frame` | chưa chạy T2 (§2) |
+| tản mát > 3 mm | tag quá xa / quá nghiêng / ảnh mờ — kéo giá lại gần, snap lại |
+| tản mát **hàng trăm mm** | không phải nhiễu ảnh: đang có **2 nguồn TF** `world↔camera` (§2), TF nhảy giữa hai giá trị |
+| khung ảnh trống, không có vòng tròn | chưa có `camera_info`, hoặc `image_topic` sai — `ros2 topic hz /rack_calib/image_debug` |
+| 4 lỗ ra **đối xứng gương** so với thực tế | tag dán quay ngược ⇒ `yaw_offset_deg: 180`, đừng đảo dấu từng trục |
+
+Hình học giá khai trong `rx150_perception/config/rack_calib.yaml` — mặc định là 4 lỗ
+ở 4 đỉnh hình chữ nhật **120 × 50 mm**, tag ở **trung điểm cạnh dài gần**:
+
+```
+    xa   (2)─────────────────(3)     v = rect_short_m  = 0.050
+          │                   │
+          │        ▲ v        │
+    gần   (0)──────┼────────(1)      u = ±rect_long_m/2 = ±0.060
+                  TAG ──► u
+```
+
+Chỉ số 0..3 chính là chỉ số `color_slot_map` đang dùng (pink→0, blue→1, green→2,
+yellow→3). Đổi thứ tự bằng `slot_index_map`, **đừng** sửa hình học.
+
+Sau khi snap:
+
+```bash
+./rx150.sh reach             # 4 lỗ có với tới được không (dùng LUÔN số vừa đo)
+./rx150.sh rack-pub          # tùy chọn: hiện frame tube_rack + 4 slot trong RViz
+./rx150.sh rack-watch        # kiểm tra giá có bị xê dịch (đo, KHÔNG ghi đè file)
+```
+
+`rack_pose.yaml` **thắng** `slot0_*`/`slot_spacing`/`rack_yaw_deg` trong
+`tube_rack_params.yaml`. `tube_rack_node` in rõ nguồn nào đang dùng lúc khởi động:
+
+```
+Hình học giá lấy từ HIỆU CHUẨN: …/rack_pose.yaml (tag 1, 30 mẫu, 2026-09-10T…)
+CHƯA hiệu chuẩn giá (không có …/rack_pose.yaml) ⇒ dùng slot0_*/… đo bằng thước
+```
+
+Chưa dán tag lên giá thì **bỏ qua cả mục này** — đường đo thước cũ chạy y như trước.
+
+**Bao lâu phải hiệu chuẩn lại?** Đây là việc **một lần cho mỗi lần đặt giá**, không
+phải việc làm mỗi chu kỳ:
+
+| Tình huống | Cần `rack-calib` lại? |
+|---|---|
+| Tắt máy, hôm sau bật lại, giá không ai đụng | **Không** — số nằm trong file, không nằm trong RAM |
+| Chạy `tubes` nhiều chu kỳ liên tiếp | **Không** — node đọc file một lần lúc khởi động |
+| Giá bị đụng / dời / kê lại | **Có** |
+| Vừa chạy `./rx150.sh calib` (hiệu chuẩn lại camera) | **Có** — toạ độ giá tính trên nền TF camera |
+| Đổi giá khác, đổi kích thước hình chữ nhật | **Có** (sửa `rack_calib.yaml` trước) |
+
+Không chắc thì đừng đoán, hỏi thẳng: `./rx150.sh rack-watch` in độ lệch mm giữa giá
+**đang thấy** và giá **trong file**. Lệch ≤ 5 mm là còn dùng được; hơn thì snap lại.
+
+`tube_rack_node` **cố ý** đọc file chứ không bám TF `tube_rack` lúc chạy: một chu kỳ
+gắp không được đổi mục tiêu giữa chừng vì camera rung hay vì tay máy che mất tag.
+
+> Lần đầu snap, file được ghi vào `src/` và chép tạm một bản sang `install/`. Chạy
+> `./tools/build.sh --packages-select rx150_perception` một lần để `install/` trỏ
+> symlink về `src/`; sau đó snap lại là ăn ngay, không cần build.
 
 ### B3 — nhận diện
 
@@ -409,6 +549,8 @@ ros2 topic echo /tube_rack/status
 | `… ở frame X nhưng node làm việc trong rx150/base_link` | detector sai `target_frame` | `ros2 topic echo /yolo/detected_tubes --once \| head -5` |
 | `… dữ liệu cũ Ns` | detector chậm / `detection_max_age_s` chặt | `ros2 topic hz /yolo/detected_tubes` |
 | Toạ độ gắp lệch **có hệ thống** | calib `static_transforms.yaml` | so thước; `./rx150.sh calib` snap lại |
+| Gắp ống OK nhưng **cắm trượt lỗ** | vị trí giá sai, không phải calib camera | `./rx150.sh rack-watch`; lệch > 5 mm ⇒ `./rx150.sh rack-calib` |
+| Cắm trượt **đối xứng gương** (slot 0 ↔ 1) | tag giá dán quay ngược | `yaw_offset_deg: 180` trong `rack_calib.yaml`, snap lại |
 | PointCloud mất khi Fixed Frame = `world` | frame có 2 cha | `ros2 run tf2_tools view_frames` |
 | `home_xyz_pitch … KHÔNG với tới` | IK home fail ⇒ âm thầm dùng home duỗi thẳng | `rx150_reach_check.py --point 0.18 0 0.18 --pitch 0` |
 | Tay quét ngang qua giá khi về home | ↑ cùng nguyên nhân, hoặc `via_staging` tắt | grep log `Tư thế trung chuyển` / `VIA-GIÁ` |
@@ -422,6 +564,14 @@ ros2 topic echo /tube_rack/status
 | Ngón kẹp bóp mãi sau khi lỗi | bridge **cố ý** giữ PWM sau grasp | `~/open_gripper` hoặc `torque_enable enable:=false` |
 | GPU đầy, pose nhảy | 2 detector cùng chạy | `ros2 node list \| grep -c yolo_tube_detector` |
 | Tay giật mạnh lúc launch | `enable_profile=False` + tay xa sleep | bắt đầu từ tư thế gần sleep (§0) |
+| **Bước ĐẦU chạy, mọi bước SAU đều `CONTROL_FAILED(-4)`** | `allowed_start_tolerance` 0.01 chặt hơn sai số fuzzy | tìm log `Validating trajectory with allowed_start_tolerance` → ABORT sau ~9ms **không** kèm `sending trajectory` |
+| `CONTROL_FAILED` kèm sai số 27° / 178° | tay CHƯA nhúc nhích — số đó là khoảng cách tới đích | như trên; đừng đi tune gain |
+| `GOAL_TOLERANCE_VIOLATED … tol=0.0200` | ngưỡng đích của bridge chặt hơn fuzzy | `default_goal_tolerance` trong `fuzzy_moveit.launch.py` |
+| `param set` ngưỡng xong vẫn hỏng y hệt | MoveIt/bridge **cache** lúc init | log vẫn in giá trị cũ ⇒ sửa launch rồi relaunch T1 |
+| `attempted = 0`, `[DONE] không còn ống nào cần gắp` | ống nằm trong `rack_filter_xy_m` quanh 1 slot | log `Slot k đã có ống … đánh dấu đã đầy`; dời ống ra ngoài `x∈[0.21,0.31] ∧ y∈[±0.125]` |
+| `GRASP: z=… dưới min_ee_z` in ở MỌI chu kỳ | `min_ee_z` cao hơn tâm vật nằm ngang | ống r=8.5mm ⇒ tâm ~0.009; đặt `min_ee_z: 0.010` |
+| Ngón khép hết, `left_finger` ~0.010–0.013 | kẹp vào không khí — nghi yaw sai trục | hiệu chuẩn `detection_yaw_offset_deg`: đặt ống dọc +x, đọc yaw trong log |
+| `topic hz` im dù topic vẫn chạy | subscriber RELIABLE vào sau topic 100 Hz | kiểm chéo: `fuzzy_node` KHÔNG lặp `stale joint_states` ⇒ vẫn tốt |
 | Slot 3/4 luôn "không với tới" | `slot_spacing` × `num_slots` vượt tầm | `rx150_reach_check.py --config tube_rack_params.yaml` |
 | Cắm ống chồng lên ống cũ | `rack_filter_xy_m` quá nhỏ | xem log `_mark_occupied_from_detections` |
 

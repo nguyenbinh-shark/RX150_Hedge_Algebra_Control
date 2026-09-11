@@ -342,7 +342,15 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             'use_armtag_tuner_gui',
-            default_value='true',
+            # MẶC ĐỊNH FALSE — trước đây là true và đó là một cái bẫy im lặng:
+            # armtag_tuner_gui publish lên /static_transforms, static_trans_pub lưu
+            # kết quả vào transform_filepath, mà install/ ở workspace này là SYMLINK
+            # về src/ (colcon --symlink-install) ⇒ mỗi phiên 't2' thường ngày có thể
+            # GHI ĐÈ static_transforms.yaml trong mã nguồn. Đo được 2026-09-09: bản
+            # đầu phiên và bản sau khi khởi động lại T2 lệch nhau 9.75° và 30 mm, và
+            # bản trong git HEAD lại khác cả hai — hiệu chuẩn 'trôi' chính là vì thế.
+            # Phiên hiệu chuẩn ('./rx150.sh calib') vẫn truyền use_armtag_tuner_gui:=true.
+            default_value='false',
             choices=('true', 'false'),
             description='whether to show a GUI to publish the ref_frame to arm_base_frame transform.',
         )

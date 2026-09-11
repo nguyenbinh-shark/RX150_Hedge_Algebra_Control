@@ -1,0 +1,14 @@
+{
+  "shoulder": {
+    "correlation": 0.9705175636042894,
+    "recommend_sign": 1
+  },
+  "elbow": {
+    "correlation": 0.1530172932981131,
+    "recommend_sign": 1
+  },
+  "wrist_angle": {
+    "correlation": 0.9648735485610114,
+    "recommend_sign": 1
+  }
+}

@@ -125,7 +125,11 @@ def launch_setup(context, *args, **kwargs):
         name='fuzzy_trajectory_bridge',
         namespace=robot_name,
         output='screen',
-        parameters=[{'setpoint_topic': 'fuzzy/setpoint'}])
+        # default_goal_tolerance: ngưỡng bridge dùng để kết luận goal đạt hay chưa.
+        # Mặc định 0.02 rad (1.15°) chặt hơn khả năng của vòng PWM fuzzy ⇒ mọi
+        # goal đều trả GOAL_TOLERANCE_VIOLATED, MoveIt dịch thành CONTROL_FAILED.
+        parameters=[{'setpoint_topic': 'fuzzy/setpoint',
+                     'default_goal_tolerance': 0.10}])
 
     # ------------------------------------------------------------------ #
     # 3b. gripper_trajectory_bridge (PWM FJT server cho MoveIt)          #
@@ -211,7 +215,14 @@ def launch_setup(context, *args, **kwargs):
         'moveit_manage_controllers': False,
         'trajectory_execution.allowed_execution_duration_scaling': 1.2,
         'trajectory_execution.allowed_goal_duration_margin': 0.5,
-        'trajectory_execution.allowed_start_tolerance': 0.01,
+        # 0.01 rad (0.57°) là giá trị của launch vendor, hợp với controller
+        # ros2_control bám vị trí. Bộ fuzzy PWM để lại sai số xác lập 1.4–2.5°
+        # (đo tại home; wrist_angle tới 6.5° khi tay vươn) nên MoveIt loại MỌI
+        # quỹ đạo sau lệnh đầu tiên ngay ở khâu validate, trước khi gửi xuống
+        # bridge — log: 'Validating trajectory with allowed_start_tolerance'
+        # rồi ABORT sau ~9ms mà không có dòng 'sending trajectory'.
+        # Lưới an toàn thật nằm ở verify_tolerance_rad (3.44°) của tầng task.
+        'trajectory_execution.allowed_start_tolerance': 0.10,
     }
 
     planning_scene_monitor_parameters = {

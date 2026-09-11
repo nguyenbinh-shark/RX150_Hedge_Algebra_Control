@@ -9,7 +9,11 @@
     Ked: [0.005, 5e-05, 0.005, 0.005, 0.0005]
     # Ku = gain đầu ra (tunable). Bản gốc gộp luôn Ku vào u_max; nay tách riêng để tune độ khuếch đại
     # vòng kín độc lập với giới hạn an toàn (giá trị = u_max cũ -> giữ nguyên đáp ứng ban đầu).
-    Ku: [600.0, 800.0, 800.0, 700.0, 700.0]
+    # Đo trên phần cứng 2026-09-09: bộ cũ [600,800,800,700,700] để lại sai số xác lập
+    # 3.78° ở elbow ⇒ vượt verify_tolerance_rad (3.44°) của tầng task, 'về home' báo
+    # thất bại. Nhân 2.5 (giữ nguyên tỉ lệ giữa các khớp) đưa sai số lớn nhất về 1.49°.
+    # Mức phẳng 3000 chỉ được 1.40° — phần dư còn lại là ma sát/rơ, không phải thiếu gain.
+    Ku: [1500.0, 2000.0, 2000.0, 1750.0, 1750.0]
     # u_max nay CHỈ là ngưỡng bão hòa an toàn (hardware cap ≤ ±885), KHÔNG còn là gain điều khiển.
     u_max: [600.0, 600.0, 600.0, 600.0, 600.0]
     # --- Gravity Compensation (Pinocchio RNEA) ---
