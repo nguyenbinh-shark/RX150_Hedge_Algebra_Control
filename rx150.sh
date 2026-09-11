@@ -33,7 +33,7 @@
 #   reach     Bảng tầm với + kiểm config (KHÔNG cần robot)
 #   diag      Chụp trạng thái để gửi kèm báo lỗi -> diag_<ts>.tar.gz
 #
-# Thứ tự bring-up (chi tiết: src/rx150_pick_place/docs/RUNBOOK.md):
+# Thứ tự bring-up (chi tiết: src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md):
 #   reach → t1 → t2 → [rack-calib] → check → dry-fake → tubes
 #   (rack-calib chỉ chạy lại khi giá bị xê dịch — kết quả nằm trong file.)
 #   Hỏng ở bậc nào thì DỪNG ở bậc đó, đừng chạy tiếp.

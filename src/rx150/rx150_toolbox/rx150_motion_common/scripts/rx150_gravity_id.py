@@ -116,7 +116,7 @@ def parse_args():
 
     sp0 = sub.add_parser("signcheck", help="B0 — kiểm tra dấu gravity_sign")
     sp0.add_argument("--apply", action="store_true",
-                      help="Tự sửa gravity_sign trong src/rx150_hac_gains.yaml nếu phát hiện sai dấu")
+                      help="Tự sửa gravity_sign trong config/rx150_hac_gains.yaml của rx150_hac_controller nếu phát hiện sai dấu")
     sp0.add_argument("--out-dir", default=DEFAULT_OUT_DIR)
 
     sp1 = sub.add_parser("plan", help="Sinh lưới pose an toàn (JSON)")
@@ -384,7 +384,7 @@ def cmd_signcheck(args):
     if args.apply and any(v["recommend_sign"] < 0 for v in recs.values()):
         yaml_path = tl.find_src_config("rx150_hac_controller", "rx150_hac_gains.yaml")
         if yaml_path is None:
-            print("Không tìm thấy src/rx150_hac_gains.yaml — sửa gravity_sign tay theo recs trên.")
+            print("Không tìm thấy config/rx150_hac_gains.yaml trong cây src — sửa gravity_sign tay theo recs trên.")
         elif _patch_gravity_sign(yaml_path, recs):
             print(f"Đã sửa gravity_sign trong {yaml_path} — cần colcon build + relaunch hac_node "
                   f"rồi chạy lại signcheck để xác nhận.")

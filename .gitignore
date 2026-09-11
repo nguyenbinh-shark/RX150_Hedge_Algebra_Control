@@ -27,3 +27,14 @@ __pycache__/
 /diag_*.tar.gz
 frames.pdf
 frames.gv
+
+# ── Dữ liệu tuning: thô ở lại máy, bản tổng kết thì commit ────────────────────
+# Mỗi lần ./rx150.sh record đẻ 2 CSV (traj + det) chiếm ~98% dung lượng, còn
+# meta.json + *.png + summary.txt mới là thứ trích vào báo cáo. Ignore CSV để
+# tuning_runs/ không phình lại như đợt 09-11/09 (50 MB).
+tuning_runs/**/*.csv
+
+# Output của compare_fuzzy_vs_hac.py và plot_hac_velocity_analysis.py — sinh lại
+# được hoàn toàn bằng tính toán, không cần robot. Lệnh: xem docs/tuning/README.md
+docs/tuning/*.png
+docs/tuning/comparison_data.csv

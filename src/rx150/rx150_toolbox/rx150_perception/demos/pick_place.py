@@ -8,7 +8,7 @@
 #   T2: ros2 launch rx150_perception rx150_perception.launch.py
 #
 # Chạy demo:
-#   T3: cd ~/interbotix_ws/src/rx150_perception/demos && python3 pick_place.py
+#   T3: cd ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos && python3 pick_place.py
 
 from interbotix_common_modules.common_robot.robot import (
     create_interbotix_global_node,

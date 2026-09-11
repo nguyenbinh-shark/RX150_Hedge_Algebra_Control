@@ -16,7 +16,7 @@ import pyrealsense2 as rs
 from ultralytics import YOLO
 
 
-DEFAULT_WEIGHTS = "/home/hust/interbotix_ws/src/rx150_perception/models/best_color.pt"
+DEFAULT_WEIGHTS = "/home/hust/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/models/best_color.pt"
 
 
 def main() -> int:

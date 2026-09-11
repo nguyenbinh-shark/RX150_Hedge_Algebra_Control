@@ -16,8 +16,10 @@ RX150. File `COLCON_IGNORE` giúp `colcon` bỏ qua thư mục này khi dò ROS 
 > `--list`.
 
 Mỗi bài test nên chỉ kiểm tra một chức năng và tự kiểm tra điều kiện đầu vào trước
-khi tác động lên phần cứng. Không đặt model, rosbag hoặc log dung lượng lớn vào đây;
-hãy đặt chúng trong `test_data/` và `test_results/` ở workspace root nếu cần.
+khi tác động lên phần cứng. **Không** đặt model, rosbag hay log dung lượng lớn vào đây:
+model YOLO nằm trong `rx150_perception/models/` (commit cùng package), bag ghi ra `bags/`
+và dữ liệu đo của một lần chạy vào `tuning_runs/<nhãn>_<ts>/` — hai chỗ sau đã có luật
+`.gitignore` riêng.
 
 ## Chạy test
 
@@ -32,7 +34,7 @@ python3 module_tests/run_test.py perception/example_import_test.py
 ## Bộ smoke-test theo tầng (dùng khi bring-up phần cứng)
 
 Ba bài dưới đây bám đúng thang bậc của
-[`rx150_pick_place/docs/RUNBOOK.md`](../src/rx150_pick_place/docs/RUNBOOK.md).
+[`rx150_pick_place/docs/RUNBOOK.md`](../src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md).
 Không bài nào phát lệnh tới robot — chỉ nghe và hỏi discovery. Exit 0 = GO.
 
 ```bash
@@ -71,7 +73,7 @@ python3 module_tests/run_test.py perception/yolo_camera_gui_test.py -- --with-de
 
 ```bash
 python3 module_tests/run_test.py perception/yolo_camera_gui_test.py -- \
-  --weights src/rx150_perception/models/best_color.pt --confidence 0.35
+  --weights src/rx150/rx150_toolbox/rx150_perception/models/best_color.pt --confidence 0.35
 ```
 
 Có thể truyền đối số cho bài test sau dấu `--`:

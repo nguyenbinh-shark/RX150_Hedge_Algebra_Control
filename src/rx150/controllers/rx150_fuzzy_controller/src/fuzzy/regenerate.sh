@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Workspace root = 4 levels up from src/rx150_fuzzy_controller/src/fuzzy/
-WS_ROOT="$(cd "$(dirname "$0")/../../../.." && pwd)"
+# Workspace root = 6 cấp lên từ src/rx150/controllers/rx150_fuzzy_controller/src/fuzzy/.
+# (Trước đợt dựng cây IRROS package nằm ở src/rx150_fuzzy_controller/ nên chỉ 4 cấp; để
+#  nguyên 4 cấp thì WS_ROOT trỏ vào src/rx150 và GEN_DIR không tồn tại.)
+WS_ROOT="$(cd "$(dirname "$0")/../../../../../.." && pwd)"
 GEN_DIR="${GEN_DIR:-${WS_ROOT}/fuzzy_codegen}"
 SRC_FIS="$(dirname "$0")/fuzzy_type1.fis"
 cp "$SRC_FIS" "$GEN_DIR/fuzzy_type1.fis"

@@ -2,7 +2,7 @@
 #
 # Dùng:
 #   ros2 run rx150_perception yolo_tube_detector_node.py --ros-args \
-#       --params-file src/rx150_perception/config/yolo_detector_params.yaml
+#       --params-file src/rx150/rx150_toolbox/rx150_perception/config/yolo_detector_params.yaml
 #
 # Quy trình tune khuyến nghị (với camera + ống THẬT):
 #   1. Bật log_gate_metrics: true, chạy vài phút, đọc dòng [gate] trong log:

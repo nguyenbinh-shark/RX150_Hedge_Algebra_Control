@@ -15,7 +15,7 @@ Yêu cầu đã chạy:
   T3: ros2 run rx150_perception yolo_tube_detector_node.py
 
 Chạy demo:
-  T4: cd ~/interbotix_ws/src/rx150_perception/demos && python3 sort_tubes_by_color.py
+  T4: cd ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos && python3 sort_tubes_by_color.py
 """
 
 import json

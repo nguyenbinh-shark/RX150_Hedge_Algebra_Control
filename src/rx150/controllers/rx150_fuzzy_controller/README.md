@@ -3,6 +3,20 @@
 Package này cung cấp hệ thống điều khiển mờ (Fuzzy Logic Controller - Type 1 Mamdani) điều khiển trực tiếp mức xung (PWM mode) cho cánh tay robot Interbotix RX150 trên nền tảng ROS 2 Humble. 
 Đặc biệt, hệ thống được thiết kế theo triết lý **không xâm nhập (Non-invasive)**: giữ nguyên mã nguồn gốc của Interbotix, tích hợp trơn tru với MoveIt 2 và hệ thống Perception (Camera 3D).
 
+## Vì sao PWM mode chứ không phải Position mode
+
+Mặc định Dynamixel chạy **position mode**: vòng kín vị trí nằm sẵn trong firmware động
+cơ — không quan sát được, không sửa được, không so sánh A/B được.
+
+Chuyển motor sang `operating_mode: pwm` (khai trong `rx150_motor.yaml` của
+`rx150_motion_common`) thì firmware chỉ còn đóng vai trò **khuếch đại công suất**: toàn
+bộ vòng kín vị trí do node C++ này tính ở 100 Hz rồi gửi PWM thô qua `xs_sdk`. Đó là
+điều kiện để ba bộ `fuzzy` / `ff` / `hac` thay nhau cùng một chỗ mà tầng ứng dụng không
+phải sửa gì.
+
+Đánh đổi: mất luôn phần giữ vị trí của firmware, nên **mất điện node là tay rơi** — mọi
+quy trình bring-up đều phải theo thang bậc trong RUNBOOK.
+
 ## Tính năng chính
 
 1. **Điều khiển PWM vòng kín (Closed-loop PWM Control)**:
@@ -16,8 +30,7 @@ Package này cung cấp hệ thống điều khiển mờ (Fuzzy Logic Controlle
 5. **Giao diện Tune tham số trực tiếp (GUI)**:
    - Ứng dụng `rx150_tuning_gui.py` (Tkinter, ở `rx150_motion_common`) cho phép tinh chỉnh Gains ($K_e, K_{ed}, K_u, u_{max}$) theo thời gian thực (Live-tuning) và lưu cấu hình trực tiếp vào YAML.
 6. **Kiểm thử an toàn & Trực quan hoá**:
-   - Cung cấp script test độc lập cho khớp 5 (không chịu tải) để tìm Gain an toàn.
-   - Hỗ trợ thu thập dữ liệu ROS 2 bag để so sánh A/B. Trực quan hoá realtime và offline qua module dùng chung [data_analysis/](../../../../data_analysis/).
+   - Thu dữ liệu ROS 2 bag để so sánh A/B (`scripts/rx150_fuzzy_record.sh`). Trực quan hoá realtime và offline qua module dùng chung [data_analysis/](../../../../data_analysis/).
 
 ## Cấu trúc thư mục (Packages)
 
@@ -88,5 +101,11 @@ ros2 run plotjuggler plotjuggler -l ~/interbotix_ws/data_analysis/layouts/fuzzy_
 > Xem tài liệu chi tiết về quy trình Live Streaming, nạp ROS Bag offline, export CSV và vẽ đồ thị xuất bản tại [data_analysis/README.md](../../../../data_analysis/README.md).
 
 
-## Thông tin chi tiết
-Để xem hướng dẫn chuyên sâu về việc thiết kế luật mờ, cách sinh mã C từ FIS, kiểm thử an toàn từng khớp và so sánh hiệu suất qua bag file, vui lòng đọc tài liệu hướng dẫn kỹ thuật: [huong_dan_chi_tiet_blog.md](../../../../docs/huong_dan_chi_tiet.md).
+## Đọc thêm
+
+| Cần gì | Ở đâu |
+| :--- | :--- |
+| Thiết kế luật mờ, sinh mã C từ `.fis`, xem mặt 3D | [fuzzy_codegen/README.md](../../../../fuzzy_codegen/README.md) |
+| Thang bậc bring-up B0→B6, bảng triệu chứng → nguyên nhân | [RUNBOOK.md](../../apps/rx150_pick_place/docs/RUNBOOK.md) |
+| Sơ đồ điều khiển 5 tầng, 3 vòng kín | [docs/so_do_dieu_khien.md](../../../../docs/so_do_dieu_khien.md) |
+| Ghi CSV, quy ước topic, vẽ đồ thị | [data_analysis/README.md](../../../../data_analysis/README.md) |

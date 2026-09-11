@@ -12,7 +12,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 
-# Install Python scripts (bridge + GUI + tuning/hiệu chuẩn HAC)
+# Install Python scripts (bridge + GUI + tuning/hiệu chuẩn HAC + vẽ đồ thị)
 install(PROGRAMS
   scripts/rx150_trajectory_bridge.py
   scripts/rx150_tuning_gui.py
@@ -24,6 +24,11 @@ install(PROGRAMS
   scripts/rx150_steady_state_bench.py
   scripts/rx150_stiction_hysteresis.py
   scripts/rx150_ee_tag_bench.py
+  # Hai script vẽ đồ thị — chạy offline, KHÔNG cần robot. Chúng sinh lại toàn bộ
+  # ảnh trong docs/tuning/ (xem docs/tuning/README.md), nên phải cài để gọi được
+  # bằng `ros2 run`; trước đây thiếu ở đây nên `ros2 run` báo "No executable found".
+  scripts/compare_fuzzy_vs_hac.py
+  scripts/plot_hac_velocity_analysis.py
   DESTINATION lib/${PROJECT_NAME})
 
 # Install shared config (motor yaml, sensors_3d)

@@ -4,9 +4,11 @@ Trả lời một câu hỏi cụ thể: **toạ độ camera báo về có trù
 tới không, và phần lệch có phải là một offset hằng do đo đạc cơ khí không.**
 
 Dụng cụ: AprilTag **id 1** dán trên tay gắp, **id 0** dán trên giá đỡ ống nghiệm,
-một camera D435i treo cao. Bộ điều khiển **HAC**. Toàn bộ số liệu thô nằm trong
+một camera D435i treo cao. Bộ điều khiển **HAC**. Bản tổng kết của ba lần chạy còn ở
 `tuning_runs/tfcal_20260911_103546/`, `tuning_runs/tfval_20260911_105433/` và
-`tuning_runs/pick_20260911_104810/`.
+`tuning_runs/pick_20260911_104810/` (các file `*.json` + `static_transforms_*.yaml` —
+đủ để tra lại mọi con số trích ở dưới). CSV thô đã dọn khi làm gọn kho; muốn có lại thì
+đo lại bằng `./rx150.sh eetag-calib` và `./rx150.sh record`.
 
 Cách đọc ba cột dùng xuyên suốt:
 
@@ -114,8 +116,9 @@ và phần dư sau khi trừ trễ vẫn còn 7.17 mm RMS.
 Hệ quả trực tiếp cho `pick_place`: khi hạ xuống gắp, tay gắp dừng **cao hơn chỗ
 được lệnh ~10 mm ở lỗ gần và ~13–16 mm ở lỗ xa**. Sai số này lớn gấp ba lần toàn
 bộ sai số camera, nên **mọi nỗ lực hiệu chuẩn camera thêm nữa đều vô nghĩa cho tới
-khi bù được ma sát** — xem [friction_hac.md](friction_hac.md) và
-`rx150_friction_id.py` (hệ số bù ma sát của HAC hiện vẫn = 0).
+khi bù được ma sát** — chỉ `rx150_friction_id.py` mới hạ được phần này, và
+`friction_coulomb` / `friction_viscous` của HAC hiện **vẫn bằng 0** (xem phần GIỚI HẠN
+ở đầu `rx150_hac_controller/config/rx150_gravity_model.yaml`).
 
 ## 4. Cái bài test này KHÔNG trả lời được
 

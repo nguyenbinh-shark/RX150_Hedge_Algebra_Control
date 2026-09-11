@@ -21,9 +21,12 @@ interbotix_ws/
 ├── rx150.sh                   Điểm vào duy nhất — mọi chế độ chạy đều qua đây
 ├── rx150.repos                Pin phiên bản vendor Interbotix + third-party
 ├── source_all.sh              Source 4 overlay (ROS → apriltag → easy_handeye2 → ws này)
-├── docs/                      Tài liệu dài; docs/tuning/ giữ kết quả đo & hiệu chuẩn
+├── docs/                      Tài liệu dài
+│   ├── tuning/                Kết quả đo & quy trình hiệu chuẩn
+│   └── lich_su/               Đối chiếu với bản cũ — không mô tả hệ đang chạy
+├── tuning_runs/               Dữ liệu từng lần đo (CSV thô KHÔNG commit)
 ├── module_tests/              Smoke-test theo tầng, chạy độc lập với colcon
-├── tools/                     setup_vendor.sh, build.sh, collect_diag.sh, record_pickplace.sh
+├── tools/                     setup_vendor.sh, build.sh, collect_diag.sh, record/plot_tube_run.py
 ├── data_analysis/             Ghi CSV + vẽ đồ thị (PlotJuggler layout)
 ├── fuzzy_codegen/             Sinh fuzzy_type1.c từ file .fis (MATLAB FIS → C)
 └── src/
@@ -109,9 +112,11 @@ nằm trong [RUNBOOK](src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md).
 | [RUNBOOK.md](src/rx150/apps/rx150_pick_place/docs/RUNBOOK.md) | Thang bậc bring-up, bảng triệu chứng → nguyên nhân |
 | [docs/lenh_chay_tube_rack.md](docs/lenh_chay_tube_rack.md) | Sổ lệnh dán thẳng vào terminal: bring-up, hiệu chuẩn, khôi phục motor |
 | [PERCEPTION_GUIDE.md](src/rx150/rx150_toolbox/rx150_perception/docs/PERCEPTION_GUIDE.md) | Hiệu chuẩn hand-eye, tune PCL, tham số YOLO |
-| [docs/so_do_dieu_khien.md](docs/so_do_dieu_khien.md) | Sơ đồ cấu trúc điều khiển (5 tầng, 3 vòng kín) + bảng chênh lệch so với baseline cũ `key_point/task4_full.py` |
-| [docs/huong_dan_chi_tiet.md](docs/huong_dan_chi_tiet.md) | Hướng dẫn tổng thể, dạng bài viết |
-| [docs/tuning/](docs/tuning/) | Kết quả đo: mặt điều khiển, đường quỹ đạo, ma sát/trọng lực |
+| [docs/so_do_dieu_khien.md](docs/so_do_dieu_khien.md) | Sơ đồ cấu trúc điều khiển: node, topic/action, tần số, 3 vòng kín |
+| [docs/tuning/](docs/tuning/README.md) | Kết quả đo camera↔robot, quy trình hiệu chuẩn A→B→C, lệnh sinh lại đồ thị |
+| [fuzzy_codegen/README.md](fuzzy_codegen/README.md) | Thiết kế luật mờ, sinh `fuzzy_type1.c` từ `.fis`, xem mặt 3D |
+| [data_analysis/README.md](data_analysis/README.md) | Quy ước topic/CSV telemetry, ghi và vẽ đồ thị điều khiển |
+| [docs/lich_su/](docs/lich_su/) | Nhật ký đưa lên phần cứng + đối chiếu baseline cũ `key_point/task4_full.py` |
 
 ## Đóng góp
 

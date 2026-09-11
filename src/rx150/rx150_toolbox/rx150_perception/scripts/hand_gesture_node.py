@@ -46,7 +46,7 @@ except ImportError as exc:  # pragma: no cover
         ) from exc
     except ImportError:
         raise ImportError(
-            'mediapipe chưa cài. Chạy: pip install --user -r src/rx150_perception/requirements.txt'
+            'mediapipe chưa cài. Chạy: pip install --user -r src/rx150/rx150_toolbox/rx150_perception/requirements.txt'
         ) from exc
 
 

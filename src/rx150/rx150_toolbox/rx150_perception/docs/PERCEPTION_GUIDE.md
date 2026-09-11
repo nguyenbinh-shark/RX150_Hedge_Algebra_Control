@@ -261,7 +261,7 @@ Trên cửa sổ **PointCloud Tuner GUI** và RViz:
 Demo này đọc cụm từ `pc_filter`, nên phải bật nhánh PCL như mục 2.3. Mở **Terminal 3**:
 ```bash
 source ~/interbotix_ws/install/setup.bash
-cd ~/interbotix_ws/src/rx150_perception/demos
+cd ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos
 python3 pick_place.py
 ```
 *(Script sẽ tự động quét tọa độ các cụm vật thể từ PointCloud và điều khiển tay gắp thả lần lượt từng vật).*
@@ -271,7 +271,7 @@ python3 pick_place.py
 ### 2.5 Demo Phân Loại Ống Nghiệm Theo Màu (nhánh YOLO)
 ```bash
 source ~/interbotix_ws/install/setup.bash
-python3 ~/interbotix_ws/src/rx150_perception/demos/sort_tubes_by_color.py
+python3 ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos/sort_tubes_by_color.py
 ```
 Đây là nhánh **xử lý ảnh** (YOLOv8 segmentation), không dùng PointCloud/pc_filter:
 

@@ -126,5 +126,11 @@ ros2 run rx150_motion_common plot_hac_velocity_analysis.py   # mặt 3D 4 góc p
 ros2 run rx150_motion_common compare_fuzzy_vs_hac.py         # overlay fuzzy vs HAC
 ```
 
-Kết quả tham chiếu đã lưu trong [docs/tuning/](../../../../docs/tuning/); phần lý thuyết ma sát
-xem [docs/tuning/friction_hac.md](../../../../docs/tuning/friction_hac.md).
+Hai script trên **không** cần robot. Đặt `RX150_PLOT_DIR` để chọn nơi ghi ảnh, nếu không
+ảnh rơi ra thư mục hiện hành — xem [docs/tuning/README.md](../../../../docs/tuning/README.md).
+
+Về ma sát: mô hình trọng lực đã hiệu chuẩn (`gravity_model_source: fitted`) nhưng phần dư
+còn lại **đảo dấu theo hướng tiếp cận** ⇒ đó là ma sát tĩnh, không phải trọng lực. Số đo
+và giới hạn ghi ngay trong header của
+[config/rx150_gravity_model.yaml](config/rx150_gravity_model.yaml); công cụ hạ nó là
+`rx150_friction_id.py`, hệ số hiện vẫn bằng 0.

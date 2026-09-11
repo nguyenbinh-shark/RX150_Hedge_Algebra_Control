@@ -18,7 +18,7 @@
 #
 # Demo gắp/phân loại (demos/sort_tubes_by_color.py, demos/pick_place.py) KHÔNG nằm trong
 # launch này — nó điều khiển tay thật nên phải gọi tay ở terminal khác:
-#   python3 ~/interbotix_ws/src/rx150_perception/demos/sort_tubes_by_color.py
+#   python3 ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/demos/sort_tubes_by_color.py
 #
 # Ba ràng buộc đã được khoá cứng ở đây (đừng đổi trừ khi biết rõ):
 #   1. Camera CHỈ do nhánh fuzzy_moveit mở; perception nhận use_camera:=false.

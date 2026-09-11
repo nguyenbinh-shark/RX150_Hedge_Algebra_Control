@@ -7,9 +7,9 @@ end-to-end (không cần camera/robot thật).
 
 Chạy:
     source ~/interbotix_ws/source_all.sh
-    python3 src/rx150_perception/test/test_yolo_tube_detector.py           # test offline
-    python3 src/rx150_perception/test/test_yolo_tube_detector.py --bench   # + đo ms/frame
-    python3 src/rx150_perception/test/test_yolo_tube_detector.py --live    # + fake camera 30Hz
+    python3 src/rx150/rx150_toolbox/rx150_perception/test/test_yolo_tube_detector.py           # test offline
+    python3 src/rx150/rx150_toolbox/rx150_perception/test/test_yolo_tube_detector.py --bench   # + đo ms/frame
+    python3 src/rx150/rx150_toolbox/rx150_perception/test/test_yolo_tube_detector.py --live    # + fake camera 30Hz
                                                                            #   đo nhịp topic thật
 
 Thoát code 0 = tất cả pass; khác 0 = có test FAIL.

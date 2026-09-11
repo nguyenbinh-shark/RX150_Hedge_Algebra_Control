@@ -22,7 +22,7 @@
 # kết quả vào static_transforms.yaml (nằm trong install share — BỊ XÓA khi colcon
 # build). Copy về src để giữ lâu dài:
 #   cp $(ros2 pkg prefix rx150_perception)/share/rx150_perception/config/static_transforms.yaml \
-#      ~/interbotix_ws/src/rx150_perception/config/
+#      ~/interbotix_ws/src/rx150/rx150_toolbox/rx150_perception/config/
 #
 # Tái dùng TF đã lưu (không GUI, không cần thấy tag):
 #   ros2 launch rx150_perception armtag.launch.py \
