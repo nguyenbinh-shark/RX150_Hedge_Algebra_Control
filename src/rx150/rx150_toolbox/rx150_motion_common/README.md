@@ -46,10 +46,19 @@ với robot. Bench so ba quỹ đạo của cùng điểm `rx150/ee_gripper_link
 | `enc` | TF `base_link → ee_gripper_link` (joint_states) | `cmd→enc`: controller bám setpoint tốt đến đâu |
 | `cam` | AprilTag, quy về EE qua offset gắn tag | `enc→cam`: phần **encoder không thấy**; `cmd→cam`: sai số pick_place thực chịu |
 
-Offset gắn tag `X = T(ee_gripper_link → tag)` **được fit từ chính dữ liệu** (trung vị vị trí
-+ trung bình quaternion trên các mẫu đứng yên), nên không cần đo tay xem tag dán lệch bao
-nhiêu. Đổi lại, mọi sai lệch **hằng** (dán lệch, bias hiệu chuẩn camera) bị hấp thụ vào `X`:
-bench đo được độ **không nhất quán giữa các pose**, không đo được bias tuyệt đối của cả hệ.
+Offset gắn tag `X = T(ee_gripper_link → tag)` mặc định **được fit từ chính dữ liệu** (trung
+vị vị trí + trung bình quaternion trên các mẫu đứng yên), nên không cần đo tay xem tag dán
+lệch bao nhiêu. Đổi lại, mọi sai lệch **hằng** (dán lệch, bias hiệu chuẩn camera) bị hấp thụ
+vào `X`: khi đó bench chỉ đo được độ **không nhất quán giữa các pose**.
+
+Đo lại chính `X` đó: `./rx150.sh eetag-tagcal` (bộ pose `tagcal`, ~6 phút, tự cài kết quả
+và sao lưu bản cũ). Quy trình đầy đủ + tiêu chí GO/NO-GO:
+[docs/tuning/hieu_chuan_tag_va_camera.md](../../../../docs/tuning/hieu_chuan_tag_va_camera.md).
+
+Muốn số tuyệt đối thì truyền `--tag-offset ee_tag_offset.yaml` — bản `X` đo riêng bằng bài
+AX=ZB (`mode tagoffset`, ±1.0 mm). `X` cố định ⇒ cột `enc→cam` trở lại là **sai lệch thật**,
+và câu hỏi "có offset hằng không" mới trả lời được. Mọi phép đo hiệu chuẩn/kiểm tra dưới đây
+đều chạy với cờ này.
 
 Bốn terminal:
 
@@ -72,17 +81,32 @@ không phải cơ khí robot mà là phép quay trong TF camera: armtag Snap Pos
 thế để giải. Tag trên tay gắp cho hàng nghìn tư thế, đủ để giải lại cả extrinsic:
 
 ```bash
-./rx150.sh eetag-hold --pose-set grid --dwell 3.5 --settle 1.5   # 27 điểm lưới sinh bằng IK
-ros2 run rx150_motion_common rx150_ee_tag_bench.py refine tuning_runs/eetag_*/grid27_hold.csv
+./rx150.sh eetag-calib     # 39 pose lưới (tránh hộp giá) -> tự chạy refine luôn
+# hoặc tự gọi:
+ros2 run rx150_motion_common rx150_ee_tag_bench.py refine <csv> --tag-offset ee_tag_offset.yaml
 ```
 
-`refine` giải đồng thời `T_ref_cam` (6) + `t_X` (3) bằng least-squares, **tự kiểm tra chéo**
+Có `--tag-offset` thì `refine` **chỉ giải 6 ẩn extrinsic**, `t_X` giữ nguyên. Quan trọng:
+tịnh tiến của extrinsic và `t_X` đổi chác gần như 1:1 khi cả hai cùng tự do, nên bài 9 ẩn
+luôn cho residual đẹp nhưng chia phần sai lệch **tuỳ ý** giữa hai bên — không dùng để kết
+luận "camera lệch bao nhiêu" được. Không có cờ đó thì nó quay về bài 9 ẩn như cũ.
+
+`--keepout-rack` bỏ những pose rơi trúng hộp vật cản của giá (đọc `rack_box` trong
+`rack_pose.yaml`) — **snap giá trước** thì vùng cấm mới đúng chỗ.
+
+`refine` giải `T_ref_cam` bằng least-squares, **tự kiểm tra chéo**
 (fit một nửa số pose, đo trên nửa chưa thấy) và tách phần dư còn phụ thuộc tư thế. Nó ghi
 `static_transforms_refined.yaml` **nhưng không ghi đè** bản đang dùng — TF đó đổi cả toạ độ
 vật mà pick_place nhìn thấy, nên việc áp dụng là quyết định có ý thức.
 
 Đọc kết quả: chênh góc giữa hai lần kiểm tra chéo < 1° ⇒ lệch là thật; tầm phủ dữ liệu dưới
 100 mm theo trục nào thì hiệu chỉnh xoay quanh trục đó lẫn với tịnh tiến, đừng tin.
+
+**Đo lại 2026-09-11** (HAC, 39 pose lưới phủ 221×470×162 mm): hiệu chuẩn đang dùng lệch
+**5.61°** và **29 mm**; sau khi áp dụng, đo lại đúng 34 nhóm pose đó thì `enc→cam` đi từ
+16.63 → **4.15 mm** RMS, bias 11.5 → **1.6 mm**, sai hướng 5.62° → **1.23°**, và lần refine
+kế tiếp chỉ đòi 0.52° với kiểm tra chéo *tệ đi* ⇒ đã hội tụ. Chi tiết + bài test quỹ đạo:
+[docs/tuning/do_chinh_xac_camera_robot.md](../../../../docs/tuning/do_chinh_xac_camera_robot.md).
 
 **Đo trên máy 2026-09-09** (HAC, 27 pose lưới, 5470 mẫu): hiệu chuẩn armtag lệch **4.48°**
 (chủ yếu pitch +3.44°); kiểm tra chéo 7.06→3.37 và 6.17→3.34 mm trên pose chưa thấy, chênh
@@ -96,6 +120,45 @@ vật mà pick_place nhìn thấy, nên việc áp dụng là quyết định c�
 Lần refine thứ hai chỉ đòi sửa thêm 0.17° và kiểm tra chéo *tệ đi* 0.30 mm ⇒ đã hội tụ,
 không còn gì để chỉnh. Phần dư còn lại có cấu trúc **−16 mm/m theo tầm với ở trục z** — tay
 võng xuống ~1.6 mm mỗi 100 mm vươn ra, đúng thứ encoder mù và `refine` không sửa được.
+
+#### Bám quỹ đạo + tới điểm trên đường gắp (`pick`)
+
+```bash
+./rx150.sh eetag-pick                       # 4 lỗ × 2 vòng, ~2 phút
+./rx150.sh eetag-pick -- --slots 1,3 --cycles 3 --cart-vel 0.03
+ros2 run rx150_motion_common rx150_ee_tag_bench.py pickreport <csv> --tag-offset ee_tag_offset.yaml
+```
+
+Đi **đường thẳng trong không gian Descartes** qua đúng chuỗi điểm của `pick_place`: treo
+trên lỗ → hạ → dừng → nhấc → sang lỗ kế, tốc độ lấy thẳng từ `tube_rack_params.yaml`. Điểm
+thấp nhất dừng cách miệng lỗ `--clearance` (mặc định 15 mm) nên **không bao giờ chạm giá**,
+kể cả khi `rack_pose.yaml` lệch.
+
+Toàn tuyến được **kiểm khô trước khi động cơ nhúc nhích**: IK từng bước, bước khớp lớn nhất
+(bắt lật nhánh IK), sàn `z`, và góc tới mặt tag. Cái cuối là ràng buộc thật: camera treo cao
+mà mặt tag hướng theo `+z` của `ee_gripper_link`, nên tư thế gắp thật (pitch ≈ 90°) quay mặt
+tag **ngang** và camera gần như không đọc được. Mỗi điểm chốt vì thế tự chọn pitch lớn nhất
+trong ladder còn giữ góc tới ≤ `--max-incidence` (60°) — hình dạng đường đi giữ nguyên, chỉ
+độ chúc cổ tay giảm (thực tế ra 37–54°).
+
+Báo cáo tách ba câu hỏi:
+
+1. **Tới điểm** — ở các điểm dừng, tách `enc→cam` thành phần **hằng** và phần **thay đổi
+   theo điểm**; bỏ `--settle-skip` giây đầu (mặc định 0.5) để quá độ không bị đọc thành sai
+   số tĩnh, và khử mẫu trùng khung ảnh (bench lấy mẫu nhanh hơn 30 fps của camera).
+2. **Bám quỹ đạo** — ước lượng **trễ** và **lệch hằng** *đồng thời* bằng cách khớp
+   `cam(t) ≈ enc(t−τ) + b`. Không tách thì trễ 60 ms ở 50 mm/s đội lên 3 mm và bị đọc nhầm
+   thành offset. Kèm độ **cong** của đường đi so với đoạn thẳng nối hai đầu (không dính trễ).
+3. **Hai tag** — vector tay↔giá do camera đo trong **cùng một khung hình** so với vector
+   robot tin. Hiệu hai pose trong một ảnh không đi qua phần tịnh tiến của hiệu chuẩn
+   hand-eye, nên đây là phép kiểm độc lập ở đúng chỗ sắp gắp. Cần detector tag giá chạy
+   (`rack_calib.launch.py mode:=watch`).
+
+**Đo 2026-09-11** (HAC, sau hiệu chuẩn): `enc→cam` hằng **3.22 mm**, thay đổi giữa các điểm
+chỉ ~1 mm, **trễ 0 ms**; kiểm chéo hai tag cho 3.60 mm — khớp nhau. Nhưng `lệnh→enc` còn
+**10.14 mm** và **đảo dấu theo chiều đi** (hạ xuống dừng cao hơn lệnh 10.6 mm, nhấc lên nằm
+thấp hơn 10.8 mm, không hội tụ sau 3 s) ⇒ **ma sát tĩnh**, không phải camera, mới là thứ
+chặn độ chính xác gắp hiện nay.
 
 > **Bẫy đã trả giá**: `install/` ở workspace này là **symlink về `src/`**, còn `static_trans_pub`
 > lưu hiệu chuẩn vào `transform_filepath` — nên nó ghi thẳng vào mã nguồn, cả khi nhận

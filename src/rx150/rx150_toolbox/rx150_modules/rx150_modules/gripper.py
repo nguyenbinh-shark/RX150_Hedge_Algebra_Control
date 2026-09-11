@@ -31,7 +31,8 @@ class Gripper:
                  finger_closed=FINGER_CLOSED, finger_open=FINGER_OPEN,
                  empty_margin=0.0025, open_margin=0.0025, settle_s=0.4,
                  velocity_scale=0.2, allowed_time=4.0,
-                 pwm_grasp=250.0, pwm_release=-250.0, pwm_timeout_s=2.5,
+                 pwm_grasp=250.0, pwm_release=-250.0, pwm_timeout_s=4.0,   # 2.5s không đủ: 0.5s thắng ma sát + ~2s hành trình
+                 pwm_min_travel=0.0015,
                  gripper_name='gripper', dry_run=False):
         self._node = node
         self._log = node.get_logger()
@@ -50,6 +51,7 @@ class Gripper:
         self.pwm_grasp = float(pwm_grasp)
         self.pwm_release = float(pwm_release)
         self.pwm_timeout = float(pwm_timeout_s)
+        self.pwm_min_travel = float(pwm_min_travel)
         self.gripper_name = gripper_name
         self.dry_run = bool(dry_run)
 
@@ -131,16 +133,30 @@ class Gripper:
             return False
         self._pub.publish(JointSingleCommand(name=self.gripper_name, cmd=float(pwm)))
         t0 = time.monotonic()
-        last, still_since = self.finger(), None
+        start = last = self.finger()
+        still_since = None
+        moved = False
         while time.monotonic() - t0 < self.pwm_timeout:
             time.sleep(0.05)
             pos = self.finger()
             if pos is None or last is None:
                 last = pos
                 continue
+            # Ngón phải THỰC SỰ rời chỗ trước đã. Không có chốt này thì ma sát
+            # tĩnh lúc khởi động (ngón đứng yên ~0.5s trước khi thắng được ma
+            # sát) bị đọc thành "đã stall" ngay ở t=0, và hàm trả về trong khi
+            # ngón còn nguyên vị trí cũ — đo được 2026-09-10 trên đường RELEASE.
+            # ...và phải rời chỗ ĐÚNG CHIỀU đang lệnh. RELEASE luôn nối ngay
+            # sau GRASP đang bóp, nên 0.5s đầu ngón còn đóng tiếp theo quán
+            # tính lệnh cũ; đo bằng trị tuyệt đối thì chỗ đó bị nhận nhầm là
+            # "đã chạy" và hàm chốt kết quả ở đúng vị trí cũ.
+            if start is not None:
+                travel = (pos - start) if pwm > 0 else (start - pos)
+                if travel > self.pwm_min_travel:
+                    moved = True
             if abs(pos - last) < 0.0004:
                 still_since = still_since or time.monotonic()
-                if time.monotonic() - still_since > 0.25:
+                if moved and time.monotonic() - still_since > 0.25:
                     self._log.info(f'{label} (PWM): dừng ở finger={pos:.4f}m sau '
                                    f'{time.monotonic() - t0:.2f}s.')
                     return True

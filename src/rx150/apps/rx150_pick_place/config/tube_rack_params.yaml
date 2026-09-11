@@ -108,12 +108,36 @@
     move_retries: 1
 
     # ══ gripper ═════════════════════════════════════════════════════════
-    use_gripper_bridge: true
+    # BẬT LẠI thành true chỉ khi SRDF/URDF left_finger được sửa cho khớp phần
+    # cứng. Đo 2026-09-10: hành trình THẬT của ngón là 0.0133 (đóng kín) →
+    # 0.0330 (mở hết), nhưng MoveIt chỉ ra lệnh đóng tới 0.0222–0.0245 ⇒ ngón
+    # còn hé quá rộng, không ngậm nổi ống. Bridge báo SUCCESS đúng luật rồi GIỮ
+    # PWM, nên ngón bóp tiếp lúc LIFT và task đọc thành "vật tuột".
+    # false = đi thẳng PWM + dò stall (Gripper._pwm) — đóng đến khi chạm thật.
+    use_gripper_bridge: false
+    # ⚠️ _pwm() publish THẲNG giá trị này, KHÔNG tự gắn dấu (khác bridge: bridge
+    # nhận độ lớn rồi tự đặt effort = −grasp_effort). Quy ước phần cứng:
+    # ĐÓNG = PWM ÂM, MỞ = PWM DƯƠNG (đo tay: −350 → 0.0133, +350 → 0.0330).
+    # Mặc định trong params.py (+250 / −250) là NGƯỢC DẤU cho đường này.
+    # ⚠️ BẬT LẠI -300/+300 ngày 2026-09-11 theo yêu cầu vận hành, TRONG KHI
+    # BÁNH RĂNG NGÓN KẸP VẪN CHƯA THAY. Rủi ro đã biết, đừng để chạy không
+    # người trông: _pwm() publish PWM rồi KHÔNG đưa về 0 (cố ý, để giữ lực lúc
+    # mang vật). Gear hỏng ⇒ ngón không bao giờ chạm cữ để bộ dò stall nhận ra,
+    # RELEASE hết 4s rồi để +300 nằm lại VÔ THỜI HẠN ⇒ đã đo motor gripper
+    # 63°C trong khi các khớp tay 37-43°C, và waist ngắt một lần
+    # (RxPacketError hardware error) trong cùng phiên.
+    # ĐẶT LẠI 0.0 ngay khi chạy xong, hoặc khi thấy RELEASE báo hết 4.0s.
+    gripper_pwm_grasp: -300.0
+    gripper_pwm_release: 300.0
     finger_closed_m: 0.015
     finger_open_m: 0.037
     grasp_empty_margin_m: 0.0025
     grasp_settle_s: 0.4
     grasp_retries: 1
+    # Ngón kẹp đang hỏng gear ⇒ số đọc left_finger không tin được. Vẫn ra
+    # lệnh kẹp/nhả, nhưng không để nó chặn chu kỳ — mục tiêu hiện tại là đo
+    # quỹ đạo và độ chính xác của tay, không phải nghiệm thu cú kẹp.
+    grasp_verify: false
     regrasp_z_step: 0.008
     set_gripper_pwm_mode: true
 

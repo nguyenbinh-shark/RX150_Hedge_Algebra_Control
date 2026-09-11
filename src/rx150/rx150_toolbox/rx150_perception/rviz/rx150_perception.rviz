@@ -4,9 +4,12 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /TF1
         - /FilteredPointCloud1
+        - /ColorImage1
+        - /MarkerArray1
       Splitter Ratio: 0.5
-    Tree Height: 272
+    Tree Height: 176
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -145,6 +148,8 @@ Visualization Manager:
           Value: true
         camera_link:
           Value: true
+        rack_tag:
+          Value: true
         rx150/ar_tag_link:
           Value: true
         rx150/base_link:
@@ -152,6 +157,8 @@ Visualization Manager:
         rx150/ee_arm_link:
           Value: true
         rx150/ee_gripper_link:
+          Value: true
+        rx150/ee_tag_link:
           Value: true
         rx150/fingers_link:
           Value: true
@@ -175,7 +182,7 @@ Visualization Manager:
           Value: true
         world:
           Value: true
-      Marker Scale: 1
+      Marker Scale: 0.20000000298023224
       Name: TF
       Show Arrows: true
       Show Axes: true
@@ -184,6 +191,8 @@ Visualization Manager:
         camera_link:
           camera_color_frame:
             camera_color_optical_frame:
+              rack_tag:
+                {}
               world:
                 rx150/base_link:
                   rx150/shoulder_link:
@@ -197,7 +206,8 @@ Visualization Manager:
                               rx150/gripper_bar_link:
                                 rx150/fingers_link:
                                   rx150/ee_gripper_link:
-                                    {}
+                                    rx150/ee_tag_link:
+                                      {}
                                   rx150/left_finger_link:
                                     {}
                                   rx150/right_finger_link:
@@ -301,10 +311,10 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /camera/camera/color/image_raw
+        Value: /rack_calib/image_debug
       Value: true
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Name: MarkerArray
       Namespaces:
         {}
@@ -314,7 +324,42 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /yolo/markers
-      Value: false
+      Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: RackMarkers
+      Namespaces:
+        live/axis: true
+        live/holes: true
+        live/labels: true
+        live/outline: true
+        live/tag: true
+        saved/axis: true
+        saved/holes: true
+        saved/labels: true
+        saved/outline: true
+        saved/tag: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /rack_calib/markers
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: RackOverlay
+      Normalize Range: true
+      Topic:
+        Depth: 1
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /rack_calib/image_debug
+      Value: true
   Enabled: true
   Global Options:
     Background Color: 48; 48; 48
@@ -347,7 +392,7 @@ Visualization Manager:
       Pitch: 1
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 2.299999952316284
+      Yaw: -0.5
     Saved:
       - Class: rviz_default_plugins/Orbit
         Distance: 2
@@ -377,7 +422,9 @@ Window Geometry:
   Height: 1376
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001cb00000506fc0200000003fb000000140043006f006c006f00720049006d006100670065010000003d000001f70000002800fffffffb000000100044006900730070006c006100790073010000023a00000193000000c900fffffffb0000000a0056006900650077007301000003d300000170000000a400ffffff000007e90000050600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001cb00000506fc0200000004fb000000140043006f006c006f00720049006d006100670065010000003d0000019f0000002800fffffffb000000100044006900730070006c00610079007301000001e200000133000000c900fffffffb0000000a00560069006500770073010000031b000000a4000000a400fffffffb00000016005200610063006b004f007600650072006c0061007901000003c50000017e0000002800ffffff000007e90000050600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  RackOverlay:
+    collapsed: false
   Views:
     collapsed: false
   Width: 2490

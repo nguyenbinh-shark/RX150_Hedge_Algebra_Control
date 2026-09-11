@@ -89,6 +89,10 @@ COMMON_DEFAULTS = {
     'grasp_empty_margin_m': 0.0025,
     'grasp_settle_s': 0.4,
     'grasp_retries': 1,
+    # false = KHÔNG chặn chu kỳ khi ngón kẹp báo sai. Dùng khi phần cứng
+    # ngón (gear) hỏng và ta chỉ cần đo quỹ đạo / độ chính xác của tay.
+    # Vẫn ra lệnh kẹp/nhả như thường, chỉ bỏ hai cổng XÁC NHẬN.
+    'grasp_verify': True,
     'regrasp_z_step': 0.008,
     'gripper_pwm_grasp': 250.0,
     'gripper_pwm_release': -250.0,

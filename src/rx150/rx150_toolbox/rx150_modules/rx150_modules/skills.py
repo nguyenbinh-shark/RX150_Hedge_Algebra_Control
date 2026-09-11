@@ -274,8 +274,12 @@ class PickPlaceSkill:
             return False
 
         self.status.set(State.GRASP)
+        verify = bool(getattr(self.cfg, 'grasp_verify', True))
+        if not verify:
+            self.log.warn('grasp_verify=false — vẫn kẹp nhưng BỎ QUA xác nhận '
+                          'có vật trong ngón (đang đo quỹ đạo, ngón hỏng gear).')
         for attempt in range(int(self.cfg.grasp_retries) + 1):
-            if self.gripper.close():
+            if self.gripper.close(verify=verify):
                 break
             if attempt >= int(self.cfg.grasp_retries):
                 self.log.error('GRASP thất bại sau khi thử lại — không có vật trong ngón.')
@@ -301,7 +305,7 @@ class PickPlaceSkill:
         if not self.move_linear_to(plan.lift, speed=self.cfg.retract_speed_mps,
                                    label='LIFT'):
             return False
-        if self.gripper.holding() is False:
+        if verify and self.gripper.holding() is False:
             self.log.error('Vật TUỘT khi nhấc lên (ngón đã đóng hết).')
             self._holding = False
             self.scene.detach_object(GRASPED_OBJECT_ID)
@@ -328,7 +332,11 @@ class PickPlaceSkill:
                                        label='PLACE'):
                 return False
             self.status.set(State.RELEASE)
-            released = self.gripper.open()
+            # Cùng cờ với lúc kẹp: ngón hỏng gear thì số đọc left_finger không
+            # tin được ở CẢ hai chiều, nên xác nhận nhả cũng phải tắt theo —
+            # nếu không, mọi chu kỳ đều kết thúc ở RECOVERY dù tay đi đúng.
+            released = self.gripper.open(
+                verify=bool(getattr(self.cfg, 'grasp_verify', True)))
         finally:
             self.scene.set_collision_allowed(GRASPED_OBJECT_ID, False)
         self._holding = False

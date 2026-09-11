@@ -13,12 +13,22 @@
 #       use_camera:=true use_rviz:=true
 #   LƯU Ý: use_camera:=true khi T1 cũng đang mở camera -> lỗi "Device or resource busy".
 #
-# Snap Pose hiệu chuẩn ArmTag (cần robot ở T1 để có TF rx150/ar_tag_link):
+# VỊ TRÍ TAG TRÊN TAY GẮP: launch này phát frame `rx150/ee_tag_link` từ bản ĐO
+# `config/ee_tag_offset.yaml` và trỏ armtag vào đó (arm_tag_frame:=auto). Mặc định
+# cũ `rx150/ar_tag_link` là vị trí gá AR tag CHÍNH HÃNG khai cứng trong URDF của
+# Interbotix — gá tự thiết kế thì sai, và sai bao nhiêu thì Snap Pose sai bấy nhiêu
+# (phần xoay đi đúng 1:1). Đo lại vị trí tag: `./rx150.sh eetag-tagcal`.
+#
+# Snap Pose hiệu chuẩn ArmTag (cần robot ở T1 để có TF tay gắp):
 #   ros2 launch rx150_perception rx150_perception.launch.py \
 #       use_armtag_tuner_gui:=true use_rviz:=true
 #
 # Tuner PCL (chỉ khi cần nhánh point cloud; nhớ bật pointcloud ở nơi chạy camera):
 #   ... use_pointcloud_tuner_gui:=true pointcloud_enable:=true use_camera:=true
+
+import os
+
+import yaml
 
 from launch import LaunchDescription
 from launch.actions import (
@@ -58,6 +68,8 @@ def launch_setup(context, *args, **kwargs):
     position_only_launch_arg = LaunchConfiguration('position_only')
 
     load_transforms_launch_arg = LaunchConfiguration('load_transforms')
+    ee_tag_offset_file_launch_arg = LaunchConfiguration('ee_tag_offset_file')
+    ee_tag_frame_launch_arg = LaunchConfiguration('ee_tag_frame')
     transform_filepath_launch_arg = LaunchConfiguration('transform_filepath')
 
     use_rviz_launch_arg = LaunchConfiguration('use_rviz')
@@ -109,6 +121,61 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(use_pcl_pipeline_launch_arg),
     )
 
+    # ---- 1b. Frame TAG TAY GẮP dựng từ bản ĐO (ee_tag_offset.yaml) ----
+    #
+    # Snap Pose tính  T_camera←base = T_camera←tag (đo bằng ảnh) ∘ T_tag←base (tra TF).
+    # Vế thứ hai lấy ở đâu thì sai số chỗ đó chui NGUYÊN vào hiệu chuẩn camera —
+    # riêng phần xoay đi đúng 1:1 bất kể lúc snap tay máy đứng ở tư thế nào
+    # (số hiệu chỉnh là một phép liên hợp, mà liên hợp không đổi độ lớn góc).
+    #
+    # Mặc định của Interbotix là `rx150/ar_tag_link`, tức vị trí gá AR tag CHÍNH
+    # HÃNG khai cứng trong ar_tag.urdf.xacro. Gá tự thiết kế thì con số đó không
+    # còn đúng: đo 2026-09-11 lệch 4.82 mm và 2.09° so với bản đo từ dữ liệu.
+    #
+    # Nên nguồn sự thật là ee_tag_offset.yaml (đo bằng bài AX=ZB, mode tagoffset),
+    # và nó được phát thành MỘT frame TF để cả armtag lẫn RViz cùng dùng. Không
+    # đụng gì tới src/vendor/ nên kéo lại vendor không mất.
+    #
+    # Tên frame KHÔNG được trùng 'ee_tag' — detector trong ee_tag.launch.py đã phát
+    # camera_color_optical_frame -> ee_tag; trùng tên là frame có HAI cha.
+    ee_tag_offset_file = ee_tag_offset_file_launch_arg.perform(context)
+    ee_tag_frame = ee_tag_frame_launch_arg.perform(context)
+    arm_tag_frame_value = arm_tag_frame_launch_arg.perform(context)
+    ee_tag_tf_node = None
+
+    if os.path.isfile(ee_tag_offset_file):
+        with open(ee_tag_offset_file) as fh:
+            offset = yaml.safe_load(fh) or {}
+        missing = [k for k in ('x', 'y', 'z', 'qx', 'qy', 'qz', 'qw') if k not in offset]
+        if missing:
+            raise RuntimeError(f'{ee_tag_offset_file} thiếu khoá {missing} — '
+                               f'đo lại bằng "./rx150.sh eetag-tagcal".')
+        parent = offset.get('parent_frame', 'rx150/ee_gripper_link')
+        meas = offset.get('measurement') or {}
+        print(f'[rx150_perception] frame tag tay gắp {parent} -> {ee_tag_frame} '
+              f'từ {os.path.basename(ee_tag_offset_file)} '
+              f'(đo {meas.get("calibrated_at", "?")}, sai số {meas.get("sigma_mm", "?")} mm)')
+        ee_tag_tf_node = Node(
+            package='tf2_ros',
+            executable='static_transform_publisher',
+            name='ee_tag_frame_pub',
+            arguments=[
+                '--frame-id', parent, '--child-frame-id', ee_tag_frame,
+                '--x', str(offset['x']), '--y', str(offset['y']), '--z', str(offset['z']),
+                '--qx', str(offset['qx']), '--qy', str(offset['qy']),
+                '--qz', str(offset['qz']), '--qw', str(offset['qw']),
+            ],
+            output={'both': 'log'},
+        )
+        if arm_tag_frame_value == 'auto':
+            arm_tag_frame_value = ee_tag_frame
+    elif arm_tag_frame_value == 'auto':
+        arm_tag_frame_value = 'rx150/ar_tag_link'
+        print(f'[rx150_perception] ⚠ KHÔNG thấy {ee_tag_offset_file} — armtag quay về '
+              f'{arm_tag_frame_value} (vị trí gá CHÍNH HÃNG khai trong URDF). '
+              f'Gá tự in thì Snap Pose sẽ sai đúng bằng độ lệch của gá; '
+              f'chạy "./rx150.sh eetag-tagcal" để đo.')
+
     # ---- 2. ArmTag (AprilTag detector + snap TF) ----
     armtag_launch_include = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
@@ -127,7 +194,7 @@ def launch_setup(context, *args, **kwargs):
             'armtag_ns': armtag_ns_launch_arg,
             'ref_frame': ref_frame_launch_arg,
             'arm_base_frame': arm_base_frame_launch_arg,
-            'arm_tag_frame': arm_tag_frame_launch_arg,
+            'arm_tag_frame': arm_tag_frame_value,
             'use_armtag_tuner_gui': use_armtag_tuner_gui_launch_arg,
             'position_only': position_only_launch_arg,
         }.items()
@@ -146,6 +213,36 @@ def launch_setup(context, *args, **kwargs):
             'load_transforms': load_transforms_launch_arg,
             'transform_filepath': transform_filepath_launch_arg,
         }.items()
+    )
+
+    # ---- 3b. Theo dõi GIÁ ngay trong T2 (tuỳ chọn) ----
+    # Cùng node mà './rx150.sh rack-gui' chạy, nhưng rviz:=false vì T2 đã có RViz
+    # riêng — hai node cùng tên 'rviz2' trên một graph là hỏng. Marker và ảnh
+    # chồng hình vào thẳng RViz của T2 qua /rack_calib/markers và
+    # /rack_calib/image_debug (hai Display đã có sẵn trong rx150_perception.rviz).
+    #
+    # mode:=watch CHỈ ĐO, không bao giờ ghi đè rack_pose.yaml — muốn ghi thì vẫn
+    # phải './rx150.sh rack-calib'. An toàn khi task đang chạy.
+    #
+    # ⚠️ Bật cái này thì ĐỪNG chạy thêm './rx150.sh rack-gui' hay 'rack-calib' ở
+    # terminal khác: cả hai đều dựng node tên 'rack_tag' và 'rack_calib', trùng
+    # tên trên cùng graph. Tắt bớt một bên (detector:=false) hoặc tắt arg này.
+    rack_watch_launch_include = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            PathJoinSubstitution([
+                FindPackageShare('rx150_perception'),
+                'launch',
+                'rack_calib.launch.py',
+            ])
+        ]),
+        launch_arguments={
+            'mode': 'watch',
+            'rviz': 'false',
+            'detector': LaunchConfiguration('rack_watch_detector'),
+            'image_topic': LaunchConfiguration('rack_watch_image_topic'),
+            'camera_info_topic': LaunchConfiguration('rack_watch_camera_info_topic'),
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('use_rack_watch')),
     )
 
     # ---- 4. RViz (optional) ----
@@ -168,13 +265,16 @@ def launch_setup(context, *args, **kwargs):
         condition=IfCondition(use_rviz_launch_arg.perform(context)),
     )
 
-    return [
+    # ee_tag_tf_node = None khi chưa có bản đo -> lọc bỏ
+    return [n for n in (
+        ee_tag_tf_node,
         rs_camera_launch_include,
         pc_filter_launch_include,
         armtag_launch_include,
         static_transform_pub_launch_include,
+        rack_watch_launch_include,
         rviz2_node,
-    ]
+    ) if n is not None]
 
 
 def generate_launch_description():
@@ -335,8 +435,34 @@ def generate_launch_description():
     declared_arguments.append(
         DeclareLaunchArgument(
             'arm_tag_frame',
-            default_value='rx150/ar_tag_link',
-            description='name of the frame on the arm where the AprilTag is located.',
+            default_value='auto',
+            description="frame trên tay máy coi là vị trí AprilTag. 'auto' = dùng "
+                        "ee_tag_frame nếu có bản đo ee_tag_offset.yaml, không thì "
+                        "quay về rx150/ar_tag_link (vị trí gá CHÍNH HÃNG khai cứng "
+                        "trong URDF — sai nếu gá là hàng tự thiết kế).",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'ee_tag_offset_file',
+            default_value=PathJoinSubstitution([
+                FindPackageShare('rx150_perception'),
+                'config',
+                'ee_tag_offset.yaml',
+            ]),
+            description='bản ĐO của T(ee_gripper_link -> tag), sinh bởi '
+                        '"./rx150.sh eetag-tagcal". Đây là NGUỒN SỰ THẬT duy nhất '
+                        'cho vị trí tag; URDF không còn khai con số này nữa.',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'ee_tag_frame',
+            default_value='rx150/ee_tag_link',
+            description="tên frame TF dựng từ ee_tag_offset.yaml. ĐỪNG đặt là "
+                        "'ee_tag': detector trong ee_tag.launch.py đã phát "
+                        "camera_color_optical_frame -> ee_tag, trùng tên là frame "
+                        "có HAI cha.",
         )
     )
     declared_arguments.append(
@@ -389,6 +515,41 @@ def generate_launch_description():
             description=(
                 'filepath to the static_transforms.yaml file used by the static_trans_pub node.'
             ),
+        )
+    )
+
+    # ---- Theo dõi giá ----
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'use_rack_watch',
+            default_value='false',
+            choices=('true', 'false'),
+            description='Chạy rack_calib ở mode watch ngay trong T2: marker 4 lỗ + '
+                        'ảnh chồng hình vào RViz của T2, và in độ lệch so với '
+                        'rack_pose.yaml. KHÔNG ghi đè file. Bật cái này thì đừng '
+                        'chạy thêm rack-gui/rack-calib ở terminal khác (trùng tên node).',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'rack_watch_detector',
+            default_value='true',
+            choices=('true', 'false'),
+            description='false nếu detector tag giá (rack_tag) đã chạy ở nơi khác.',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'rack_watch_image_topic',
+            default_value='/camera/camera/color/image_raw',
+            description='ảnh cho detector tag giá + ảnh chồng hình.',
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'rack_watch_camera_info_topic',
+            default_value='/camera/camera/color/camera_info',
+            description='camera_info khớp với rack_watch_image_topic.',
         )
     )
 

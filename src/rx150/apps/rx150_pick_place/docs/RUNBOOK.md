@@ -290,6 +290,27 @@ Cần hiệu chuẩn lại (đã xê dịch camera): `./rx150.sh calib`, đưa A
 hình, đặt Snapshots = 10, bấm **Snap Pose**. Kết quả tự ghi vào `static_transforms.yaml`.
 Xong thì Ctrl+C và quay về `./rx150.sh t2` — đừng để GUI mở lâu (rò timer 20 Hz).
 
+> **Snap Pose chỉ nên coi là bản nháp.** Nó giải 6 ẩn từ **một** tư thế duy nhất. Đo
+> 2026-09-11: bản Snap Pose đang dùng lệch **5.61° và 29 mm**, làm toạ độ 4 miệng lỗ sai
+> tới **19 mm** và bịa ra 4° "nghiêng giá" không có thật. Bản chuẩn dùng tag trên tay gắp
+> với 39 tư thế:
+>
+> ```bash
+> ./rx150.sh eetag           # T3: detector tag tay gắp
+> ./rx150.sh rack-calib      # biết giá đang đứng đâu để lưới pose tránh
+> ./rx150.sh eetag-calib     # ~5 phút → tuning_runs/<run>/static_transforms_refined.yaml
+> # TẮT T2 rồi mới chép đè lên config/static_transforms.yaml, sau đó bật lại T2
+> ./rx150.sh rack-calib      # BẮT BUỘC snap lại: rack_pose nằm TRÊN NỀN TF vừa đổi
+> ```
+>
+> Kiểm chứng: `./rx150.sh eetag-pick`. Số đo:
+> [docs/tuning/do_chinh_xac_camera_robot.md](../../../../../docs/tuning/do_chinh_xac_camera_robot.md).
+>
+> **Gá tag tự thiết kế thì phải đo vị trí tag TRƯỚC** (`./rx150.sh eetag-tagcal`):
+> `ar_tag_link` trong URDF là vị trí gá CHÍNH HÃNG, và Snap Pose sai đúng bằng độ
+> lệch của gá. Thứ tự bắt buộc **tag → camera → giá**; quy trình đầy đủ:
+> [docs/tuning/hieu_chuan_tag_va_camera.md](../../../../../docs/tuning/hieu_chuan_tag_va_camera.md).
+
 ### B2b — vị trí giá đỡ ống nghiệm (chỉ khi giá đã dán AprilTag)
 
 Cùng khuôn với B2, khác đối tượng đo:
