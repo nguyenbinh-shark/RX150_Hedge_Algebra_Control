@@ -24,7 +24,10 @@ FFNode::FFNode() : rclcpp::Node("ff_node") {
   // 1. Parameters
   group_name_ = this->declare_parameter<std::string>("group_name", "arm");
   loop_rate_ = this->declare_parameter<double>("loop_rate", 100.0);
-  watchdog_timeout_ = this->declare_parameter<double>("watchdog_timeout", 0.2);
+  watchdog_timeout_ = this->declare_parameter<double>("watchdog_timeout", 0.05);
+  debug_publish_rate_ = this->declare_parameter<double>("debug_publish_rate", 50.0);
+  velocity_filter_tau_ = this->declare_parameter<double>("velocity_filter_tau", 0.006);
+  dbg_div_ = std::max(1, static_cast<int>(std::round(loop_rate_ / debug_publish_rate_)));
   Ke_ = this->declare_parameter<std::vector<double>>("Ke", std::vector<double>());
   Ked_ = this->declare_parameter<std::vector<double>>("Ked", std::vector<double>());
   u_max_ = this->declare_parameter<std::vector<double>>("u_max", std::vector<double>());
@@ -64,7 +67,7 @@ FFNode::FFNode() : rclcpp::Node("ff_node") {
 
   // 5. Subscription + publishers (relative topics)
   sub_js_ = this->create_subscription<sensor_msgs::msg::JointState>(
-      "joint_states", rclcpp::SensorDataQoS(),
+      "joint_states", rclcpp::SensorDataQoS().keep_last(1),
       std::bind(&FFNode::onJointStates, this, std::placeholders::_1));
 
   // Setpoint runtime (5 khớp, rad) — ghi đè reference_ để tune mà không sửa yaml/relaunch.
@@ -201,7 +204,24 @@ void FFNode::configureProfile() {
 
 void FFNode::onJointStates(const sensor_msgs::msg::JointState::SharedPtr msg) {
   last_js_ = *msg;
-  last_js_stamp_ = this->now();
+  rclcpp::Time now = this->now();
+  if (!filter_initialized_) {
+    filtered_velocity_ = last_js_.velocity;
+    last_filter_time_ = now;
+    filter_initialized_ = true;
+  } else {
+    double dt = (now - last_filter_time_).seconds();
+    if (dt > 0.0 && dt < 0.2 && filtered_velocity_.size() == last_js_.velocity.size()) {
+      double alpha = dt / (velocity_filter_tau_ + dt);
+      for (size_t i = 0; i < last_js_.velocity.size(); ++i) {
+        filtered_velocity_[i] = alpha * last_js_.velocity[i] + (1.0 - alpha) * filtered_velocity_[i];
+      }
+    } else {
+      filtered_velocity_ = last_js_.velocity;
+    }
+    last_filter_time_ = now;
+  }
+  last_js_stamp_ = now;
   have_js_ = true;
 }
 
@@ -274,13 +294,30 @@ void FFNode::onTimer() {
   }
   if ((this->now() - last_js_stamp_).seconds() > watchdog_timeout_) {
     RCLCPP_ERROR_THROTTLE(
-        this->get_logger(), *this->get_clock(), 1000, "stale joint_states -> zero PWM");
-    interbotix_xs_msgs::msg::JointGroupCommand zero_msg;
-    zero_msg.name = group_name_;
-    zero_msg.cmd.assign(joint_names_.size(), 0.0f);
-    pub_cmd_->publish(zero_msg);
+        this->get_logger(), *this->get_clock(), 1000,
+        "stale joint_states -> ramping PWM to zero");
+    if (!in_watchdog_ramp_) {
+      in_watchdog_ramp_ = true;
+      watchdog_trip_time_ = this->now();
+    }
+    double elapsed = (this->now() - watchdog_trip_time_).seconds();
+    // Ở đây ramp thẳng về 0, KHÁC hac_node/fuzzy_node (chúng giữ phần bù trọng lực
+    // có thời hạn rồi mới thả). Không phải bỏ sót: ff_node không có bù trọng lực,
+    // nên không có thành phần nào đáng giữ lại. Đừng "đồng bộ hoá" lại chỗ này.
+    const double kRampDuration = 0.020;  // 20 ms ramp
+    double scale = (elapsed < kRampDuration) ? (1.0 - elapsed / kRampDuration) : 0.0;
+
+    interbotix_xs_msgs::msg::JointGroupCommand safe_msg;
+    safe_msg.name = group_name_;
+    safe_msg.cmd.resize(joint_names_.size(), 0.0f);
+    for (size_t i = 0; i < joint_names_.size(); ++i) {
+      float base_cmd = (i < last_cmd_pwm_.size()) ? last_cmd_pwm_[i] : 0.0f;
+      safe_msg.cmd[i] = static_cast<float>(scale) * base_cmd;
+    }
+    pub_cmd_->publish(safe_msg);
     return;
   }
+  in_watchdog_ramp_ = false;
 
   const size_t n = joint_names_.size();
   std::vector<float> cmd(n, 0.0f);
@@ -343,10 +380,12 @@ void FFNode::onTimer() {
       }
     }
   } else {
+    const double kVelLimit = 13.7;  // ~131 Dynamixel units (0.229 rpm/unit) ≈ 13.7 rad/s
     for (size_t i = 0; i < kProfileDoF; ++i) {
-      q_ref_[i] = reference_[i];
-      qdot_ref_[i] = 0.0;
+      qdot_ref_[i] = (reference_[i] - q_ref_[i]) * loop_rate_;
+      qdot_ref_[i] = std::clamp(qdot_ref_[i], -kVelLimit, kVelLimit);
       qddot_ref_[i] = 0.0;
+      q_ref_[i] = reference_[i];
     }
   }
 
@@ -354,12 +393,13 @@ void FFNode::onTimer() {
     ref_msg.position[i] = (i < kProfileDoF) ? q_ref_[i] : reference_[i];
     ref_msg.velocity[i] = (i < kProfileDoF) ? qdot_ref_[i] : 0.0;
   }
-  pub_ref_->publish(ref_msg);
 
   for (size_t i = 0; i < n; ++i) {
     const size_t idx = js_index_.at(joint_names_[i]);
     const double pos = current_positions[i];
-    const double vel = last_js_.velocity.size() > idx ? last_js_.velocity[idx] : 0.0;
+    const double vel =
+        filtered_velocity_.size() > idx ? filtered_velocity_[idx] :
+        (last_js_.velocity.size() > idx ? last_js_.velocity[idx] : 0.0);
 
     const double ref_p = (i < kProfileDoF) ? q_ref_[i] : reference_[i];
     const double ref_v = (i < kProfileDoF) ? qdot_ref_[i] : 0.0;
@@ -391,15 +431,22 @@ void FFNode::onTimer() {
     ff_msg.effort[i] = ff_pwm;
   }
 
+  // Lưu trạng thái lệnh gần nhất phục vụ ramp khi watchdog trip
+  last_cmd_pwm_ = cmd;
+
   interbotix_xs_msgs::msg::JointGroupCommand cmd_msg;
   cmd_msg.name = group_name_;
   cmd_msg.cmd = cmd;
   pub_cmd_->publish(cmd_msg);
 
-  pub_err_->publish(err_msg);
-  pub_edot_->publish(edot_msg);
-  pub_eff_->publish(eff_msg);
-  pub_ff_->publish(ff_msg);
+  // Throttle các topic debug xuống debug_publish_rate (mặc định 50Hz)
+  if (++dbg_cnt_ % dbg_div_ == 0) {
+    pub_ref_->publish(ref_msg);
+    pub_err_->publish(err_msg);
+    pub_edot_->publish(edot_msg);
+    pub_eff_->publish(eff_msg);
+    pub_ff_->publish(ff_msg);
+  }
 }
 
 int main(int argc, char ** argv) {

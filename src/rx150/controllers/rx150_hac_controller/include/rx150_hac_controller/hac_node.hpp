@@ -32,7 +32,21 @@ class HacNode : public rclcpp::Node {
 
   std::string group_name_;
   double loop_rate_ = 100.0;
-  double watchdog_timeout_ = 0.2;
+  double watchdog_timeout_ = 0.05;
+  double debug_publish_rate_ = 50.0;
+  double velocity_filter_tau_ = 0.006;
+  uint64_t dbg_cnt_ = 0;
+  uint32_t dbg_div_ = 2;
+
+  std::vector<double> filtered_velocity_;
+  rclcpp::Time last_filter_time_;
+  bool filter_initialized_ = false;
+
+  std::vector<float> last_cmd_pwm_;
+  std::vector<float> last_grav_pwm_;
+  rclcpp::Time watchdog_trip_time_;
+  bool in_watchdog_ramp_ = false;
+
   std::vector<double> error_limit_;
   std::vector<double> error_dot_limit_;
   std::vector<double> u_max_;

@@ -1,0 +1,196 @@
+diff --git a/include/interbotix_xs_driver/xs_common.hpp b/include/interbotix_xs_driver/xs_common.hpp
+index cddb5b9..8eaa609 100644
+--- a/include/interbotix_xs_driver/xs_common.hpp
++++ b/include/interbotix_xs_driver/xs_common.hpp
+@@ -43,6 +43,11 @@ namespace interbotix_xs
+ // All motors are preset to 1M baud
+ #define DEFAULT_BAUDRATE 1000000
+ 
++// Fallback baudrate probe list for autodetect.
++// `inline` (not `static`) so every translation unit shares one object: `static` at
++// namespace scope means internal linkage and would give each TU its own copy.
++inline const std::vector<uint32_t> BAUDRATE_PROBE_LIST = {1000000, 4000000, 2000000, 3000000, 57600};
++
+ // Udev rule creates a symlink with this name
+ #define DEFAULT_PORT "/dev/ttyDXL"
+ 
+diff --git a/include/interbotix_xs_driver/xs_driver.hpp b/include/interbotix_xs_driver/xs_driver.hpp
+index 69fd0be..959fc01 100644
+--- a/include/interbotix_xs_driver/xs_driver.hpp
++++ b/include/interbotix_xs_driver/xs_driver.hpp
+@@ -337,6 +337,20 @@ private:
+   // Holds the USB port name that connects to the U2D2
+   std::string port = DEFAULT_PORT;
+ 
++  // Holds the configured baudrate
++  int baudrate = DEFAULT_BAUDRATE;
++
++  // Autodetect baudrate if ping fails at configured baudrate
++  bool baudrate_autodetect = false;
++
++  // Use fast sync read (instruction 0x8A)
++  bool use_fast_sync_read = false;
++
++  // Sync read statistics
++  uint64_t sync_read_count = 0;
++  uint64_t sync_read_fail_count = 0;
++  std::chrono::steady_clock::time_point last_sync_read_stat_time;
++
+   // Vector containing all the desired EEPROM register values to command the motors at startup
+   std::vector<MotorRegVal> motor_info_vec;
+ 
+diff --git a/src/xs_driver.cpp b/src/xs_driver.cpp
+index 8328ce3..018bf82 100644
+--- a/src/xs_driver.cpp
++++ b/src/xs_driver.cpp
+@@ -58,8 +58,33 @@ InterbotixDriverXS::InterbotixDriverXS(
+   }
+ 
+   if (!ping_motors()) {
+-    XSLOG_FATAL("Failed to find all motors. Shutting down...");
+-    throw std::runtime_error("Failed to find all motors.");
++    bool recovered = false;
++    if (baudrate_autodetect) {
++      XSLOG_WARN("Failed to find all motors at %d baud. Probing fallback baudrates...", baudrate);
++      for (uint32_t probe_baud : BAUDRATE_PROBE_LIST) {
++        if (static_cast<int>(probe_baud) == baudrate) continue;
++        const char * log = nullptr;
++        if (dxl_wb.setBaudrate(probe_baud, &log)) {
++          if (ping_motors()) {
++            XSLOG_WARN(
++              "*** BAUD MISMATCH ***: Motors found at %u baud instead of configured %d baud! "
++              "Please update rx150_motor.yaml baudrate to %u.",
++              probe_baud, baudrate, probe_baud);
++            baudrate = static_cast<int>(probe_baud);
++            recovered = true;
++            break;
++          }
++        }
++      }
++      if (!recovered) {
++        // restore to configured baudrate
++        dxl_wb.setBaudrate(baudrate);
++      }
++    }
++    if (!recovered) {
++      XSLOG_FATAL("Failed to find all motors. Shutting down...");
++      throw std::runtime_error("Failed to find all motors.");
++    }
+   }
+ 
+   if (write_eeprom_on_startup) {
+@@ -888,6 +913,24 @@ bool InterbotixDriverXS::retrieve_motor_configs(
+     port = mode_configs["port"].as<std::string>(DEFAULT_PORT);
+   }
+ 
++  // parse baudrate
++  baudrate = motor_configs["baudrate"].as<int>(DEFAULT_BAUDRATE);
++  if (mode_configs["baudrate"]) {
++    baudrate = mode_configs["baudrate"].as<int>(DEFAULT_BAUDRATE);
++  }
++
++  // parse baudrate_autodetect
++  baudrate_autodetect = motor_configs["baudrate_autodetect"].as<bool>(false);
++  if (mode_configs["baudrate_autodetect"]) {
++    baudrate_autodetect = mode_configs["baudrate_autodetect"].as<bool>(false);
++  }
++
++  // parse fast_sync_read
++  use_fast_sync_read = motor_configs["fast_sync_read"].as<bool>(false);
++  if (mode_configs["fast_sync_read"]) {
++    use_fast_sync_read = mode_configs["fast_sync_read"].as<bool>(false);
++  }
++
+   // create all_motors node from 'motors'
+   YAML::Node all_motors = motor_configs["motors"];
+   for (
+@@ -1070,14 +1113,15 @@ bool InterbotixDriverXS::retrieve_motor_configs(
+ 
+ bool InterbotixDriverXS::init_port()
+ {
+-  // try to connect to the specified port at the default baudrate
+-  if (!dxl_wb.init(port.c_str(), DEFAULT_BAUDRATE)) {
++  // try to connect to the specified port at the configured baudrate
++  if (!dxl_wb.init(port.c_str(), baudrate)) {
+     // if the connection fails, shut down
+     XSLOG_FATAL(
+-      "Failed to open port at '%s'. Shutting down...",
+-      port.c_str());
++      "Failed to open port at '%s' at baud %d. Shutting down...",
++      port.c_str(), baudrate);
+     return false;
+   }
++  XSLOG_INFO("Opened '%s' at %d baud.", port.c_str(), baudrate);
+   return true;
+ }
+ 
+@@ -1254,12 +1298,38 @@ bool InterbotixDriverXS::init_workbench_handlers()
+     //   + control_items["Present_Current"]->data_length;
+     uint16_t read_length = control_items["Present_Position"]->data_length + \
+       control_items["Present_Velocity"]->data_length + \
+-      control_items["Present_Current"]->data_length + \
+-      2;
+-    if (!dxl_wb.addSyncReadHandler(start_address, read_length)) {
++      control_items["Present_Current"]->data_length + 2;
++    bool added = false;
++    if (use_fast_sync_read) {
++      added = dxl_wb.addFastSyncReadHandler(start_address, read_length);
++      if (!added) {
++        XSLOG_WARN("Failed to add FastSyncReadHandler, falling back to standard SyncReadHandler.");
++        added = dxl_wb.addSyncReadHandler(start_address, read_length);
++      }
++    } else {
++      added = dxl_wb.addSyncReadHandler(start_address, read_length);
++    }
++
++    if (!added) {
+       XSLOG_FATAL("Failed to add SyncReadHandler.");
+       return false;
+     }
++
++    if (use_fast_sync_read) {
++      const char * probe_log = nullptr;
++      if (dxl_wb.probeFastSyncRead(
++          SYNC_READ_HANDLER_FOR_PRESENT_POSITION_VELOCITY_CURRENT,
++          all_ptr->joint_ids.data(),
++          all_ptr->joint_num,
++          &probe_log))
++      {
++        XSLOG_INFO("SyncRead mode: FAST (0x8A) - probe succeeded.");
++      } else {
++        XSLOG_WARN("SyncRead mode: SLOW (probe failed: %s) - falling back to standard sync read.", probe_log ? probe_log : "unknown error");
++      }
++    } else {
++      XSLOG_INFO("SyncRead mode: STANDARD (fast sync read disabled).");
++    }
+   }
+   return true;
+ }
+@@ -1371,6 +1441,7 @@ void InterbotixDriverXS::read_joint_states()
+   std::vector<int32_t> get_velocity(all_ptr->joint_num, 0);
+   std::vector<int32_t> get_position(all_ptr->joint_num, 0);
+ 
++  sync_read_count++;
+   bool read_failed = false;
+   if (dxl_wb.getProtocolVersion() == 2.0f) {
+     // Execute sync read from all pinged DYNAMIXELs
+@@ -1382,6 +1453,19 @@ void InterbotixDriverXS::read_joint_states()
+     {
+       XSLOG_ERROR("Failed syncRead: %s", log);
+       read_failed = true;
++      sync_read_fail_count++;
++    }
++
++    auto now_time = std::chrono::steady_clock::now();
++    if (std::chrono::duration_cast<std::chrono::seconds>(now_time - last_sync_read_stat_time).count() >= 5) {
++      double fail_pct = (sync_read_count > 0) ? (100.0 * static_cast<double>(sync_read_fail_count) / static_cast<double>(sync_read_count)) : 0.0;
++      bool is_fast = dxl_wb.isSyncReadFast(SYNC_READ_HANDLER_FOR_PRESENT_POSITION_VELOCITY_CURRENT);
++      uint32_t fallbacks = dxl_wb.getSyncReadFallbackCount(SYNC_READ_HANDLER_FOR_PRESENT_POSITION_VELOCITY_CURRENT);
++      XSLOG_INFO(
++        "syncRead stats: %lu reads, %lu failures (%.3f%%), mode=%s, fallbacks=%u",
++        sync_read_count, sync_read_fail_count, fail_pct,
++        is_fast ? "FAST" : "SLOW", fallbacks);
++      last_sync_read_stat_time = now_time;
+     }
+ 
+     // Gets present current of all servos

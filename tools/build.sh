@@ -29,5 +29,7 @@ source /opt/ros/humble/setup.bash
 [ -d src/vendor/interbotix_ros_core ] || {
   echo "❌ Chưa có src/vendor/. Chạy ./tools/setup_vendor.sh trước." >&2; exit 1; }
 
+./tools/check_vendor_patches.sh
+
 export PYTHONNOUSERSITE=1
 exec colcon build --symlink-install "$@"

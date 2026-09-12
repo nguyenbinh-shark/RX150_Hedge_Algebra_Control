@@ -2,8 +2,11 @@
 /rx150/fuzzy_node:
   ros__parameters:
     group_name: "arm"
-    loop_rate: 100.0          # = update_rate; Phase 2 bump lên 500 cùng patch FastSyncRead
-    watchdog_timeout: 0.2
+    loop_rate: 100.0          # Bám update_rate trong rx150_motor.yaml. Nâng theo thang P6
+                              # (100->200->333->trần đo được ở P4/P5), KHÔNG đặt sẵn 500.
+    watchdog_timeout: 0.05    # Giảm từ 0.2s xuống 50ms cho chu kỳ điều khiển nhanh
+    debug_publish_rate: 50.0  # Tần số throttle cho topic debug (50 Hz), pub_cmd vẫn full-rate
+    velocity_filter_tau: 0.006 # Hằng số thời gian lọc thông thấp vận tốc (6ms)
     reference_pose: [0.0, -1.80, 1.55, 0.8, 0.0]   # 5 khớp arm [waist,shoulder,elbow,wrist_angle,wrist_rotate] (rad); [] -> lấy sleep_positions
     # === TUNE 2026-09-12: khớp đáp ứng với bộ HAC (rx150_hac_gains.yaml) =========
     # Luật HAC: u = (2c/3a)*clamp(e,±error_limit) + (c/3b)*clamp(ed,±error_dot_limit)

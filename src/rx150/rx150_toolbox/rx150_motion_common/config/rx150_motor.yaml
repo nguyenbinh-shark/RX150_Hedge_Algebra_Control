@@ -1,9 +1,19 @@
 port: /dev/ttyDXL
+# Baud host. GIỮ 1000000 cho tới khi P3 (lật EEPROM motor sang 4 Mbps) chạy xong
+# trên phần cứng thật. Đặt 4000000 khi motor còn ở 1 Mbps chỉ khiến ping trượt rồi
+# phải nhờ baudrate_autodetect gỡ — tức là chạy ở 1 Mbps nhưng log đầy cảnh báo.
+baudrate: 1000000
+baudrate_autodetect: true   # Lưới an toàn: dò lùi + log *** BAUD MISMATCH *** thay vì chết câm
+# Bật sau khi P5 probe thành công trên phần cứng (log 'SyncRead mode: FAST (0x8A)').
+fast_sync_read: false
 
 joint_order: [waist, shoulder, elbow, wrist_angle, wrist_rotate, gripper]
 sleep_positions: [0, -1.80, 1.55, 0.8, 0, 0]
 
 joint_state_publisher:
+  # Thang P4: 100 -> 200 -> 250 -> 333 -> 400 -> 500, mỗi bậc chạy 5 phút.
+  # Cổng mỗi bậc: Hz đo >= 0.95 x danh nghĩa, p99 chu kỳ < 1.5x, 0 dòng 'Failed syncRead'.
+  # Bậc trượt đầu tiên là trần bus — chốt ở đó, không ép lên 500.
   update_rate: 100
   publish_states: true
   topic_name: joint_states
@@ -22,10 +32,13 @@ shadows:
 
 sisters:
 
+# Lưu ý: xs_driver.cpp:916 cố tình lọc bỏ 'Baud_Rate' khỏi motor_info_vec, nên giá trị
+# Baud_Rate bên dưới chỉ mang tính tài liệu. Baud thật của motor nằm trong EEPROM và
+# baudrate của host được cấu hình bởi key 'baudrate' ở đầu file.
 motors:
   waist:
     ID: 1
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 0
     Velocity_Limit: 131
@@ -35,7 +48,7 @@ motors:
 
   shoulder:
     ID: 2
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 1
     Velocity_Limit: 131
@@ -45,7 +58,7 @@ motors:
 
   elbow:
     ID: 3
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 1
     Velocity_Limit: 131
@@ -55,7 +68,7 @@ motors:
 
   wrist_angle:
     ID: 4
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 1
     Velocity_Limit: 131
@@ -65,7 +78,7 @@ motors:
 
   wrist_rotate:
     ID: 5
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 0
     Velocity_Limit: 131
@@ -75,7 +88,7 @@ motors:
 
   gripper:
     ID: 6
-    Baud_Rate: 3
+    Baud_Rate: 3  # 3=1Mbps, 6=4Mbps (tài liệu; không ghi xuống EEPROM qua load_configs)
     Return_Delay_Time: 0
     Drive_Mode: 0
     Velocity_Limit: 131

@@ -4,7 +4,7 @@
 Kiểm 4 thứ, mỗi thứ là một nguyên nhân hỏng riêng biệt ở bậc trên:
   1. Topic có tồn tại và có dữ liệu   -> xs_sdk chạy chưa?
   2. Đủ 6 tên khớp                    -> motor_configs đúng chưa? bus đọc đủ ID chưa?
-  3. Tần số ~100 Hz                   -> update_rate + tranh chấp bus
+  3. Tần số (danh nghĩa 100-500 Hz)   -> update_rate + Fast Sync Read + FTDI latency_timer
   4. position không toàn 0 / không NaN -> encoder đọc được thật
 
 Phần cứng: cần robot đã cấp nguồn và MỘT xs_sdk đang chạy (`./rx150.sh t1`).
@@ -15,6 +15,7 @@ Topic:  /rx150/joint_states  (sensor_msgs/JointState)
 Dùng:
   python3 module_tests/run_test.py hardware/joint_states_test.py
   python3 module_tests/run_test.py hardware/joint_states_test.py -- --seconds 5 --min-hz 50
+  python3 module_tests/run_test.py hardware/joint_states_test.py -- --seconds 5 --min-hz 450  # Cho chế độ 500 Hz
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def main() -> int:
     ap.add_argument("--seconds", type=float, default=3.0,
                     help="thời gian nghe để đo tần số")
     ap.add_argument("--min-hz", type=float, default=50.0,
-                    help="ngưỡng FAIL (danh nghĩa 100 Hz; <50 là có vấn đề bus)")
+                    help="ngưỡng FAIL (danh nghĩa 100-500 Hz; mặc định <50 là có vấn đề bus)")
     args = ap.parse_args()
 
     try:

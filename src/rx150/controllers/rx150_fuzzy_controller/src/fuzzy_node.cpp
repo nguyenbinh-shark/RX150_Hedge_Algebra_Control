@@ -19,7 +19,10 @@ FuzzyNode::FuzzyNode() : rclcpp::Node("fuzzy_node") {
   // 1. Parameters
   group_name_ = this->declare_parameter<std::string>("group_name", "arm");
   loop_rate_ = this->declare_parameter<double>("loop_rate", 100.0);
-  watchdog_timeout_ = this->declare_parameter<double>("watchdog_timeout", 0.2);
+  watchdog_timeout_ = this->declare_parameter<double>("watchdog_timeout", 0.05);
+  debug_publish_rate_ = this->declare_parameter<double>("debug_publish_rate", 50.0);
+  velocity_filter_tau_ = this->declare_parameter<double>("velocity_filter_tau", 0.006);
+  dbg_div_ = std::max(1, static_cast<int>(std::round(loop_rate_ / debug_publish_rate_)));
   Ke_ = this->declare_parameter<std::vector<double>>("Ke", std::vector<double>());
   Ked_ = this->declare_parameter<std::vector<double>>("Ked", std::vector<double>());
   u_max_ = this->declare_parameter<std::vector<double>>("u_max", std::vector<double>());
@@ -61,7 +64,7 @@ FuzzyNode::FuzzyNode() : rclcpp::Node("fuzzy_node") {
 
   // 5. Subscription + publishers (relative topics)
   sub_js_ = this->create_subscription<sensor_msgs::msg::JointState>(
-      "joint_states", rclcpp::SensorDataQoS(),
+      "joint_states", rclcpp::SensorDataQoS().keep_last(1),
       std::bind(&FuzzyNode::onJointStates, this, std::placeholders::_1));
 
   // Setpoint runtime (5 khớp, rad) — ghi đè reference_ để tune mà không sửa yaml/relaunch.
@@ -209,7 +212,24 @@ void FuzzyNode::configureProfile() {
 
 void FuzzyNode::onJointStates(const sensor_msgs::msg::JointState::SharedPtr msg) {
   last_js_ = *msg;
-  last_js_stamp_ = this->now();
+  rclcpp::Time now = this->now();
+  if (!filter_initialized_) {
+    filtered_velocity_ = last_js_.velocity;
+    last_filter_time_ = now;
+    filter_initialized_ = true;
+  } else {
+    double dt = (now - last_filter_time_).seconds();
+    if (dt > 0.0 && dt < 0.2 && filtered_velocity_.size() == last_js_.velocity.size()) {
+      double alpha = dt / (velocity_filter_tau_ + dt);
+      for (size_t i = 0; i < last_js_.velocity.size(); ++i) {
+        filtered_velocity_[i] = alpha * last_js_.velocity[i] + (1.0 - alpha) * filtered_velocity_[i];
+      }
+    } else {
+      filtered_velocity_ = last_js_.velocity;
+    }
+    last_filter_time_ = now;
+  }
+  last_js_stamp_ = now;
   have_js_ = true;
 }
 
@@ -279,14 +299,52 @@ void FuzzyNode::onTimer() {
     return;
   }
   if ((this->now() - last_js_stamp_).seconds() > watchdog_timeout_) {
+    if (!in_watchdog_ramp_) {
+      in_watchdog_ramp_ = true;
+      watchdog_trip_time_ = this->now();
+    }
+    const double elapsed = (this->now() - watchdog_trip_time_).seconds();
+
+    // Ba giai đoạn. Cắt PWM về 0 tức thì sẽ làm tay máy RƠI, nên phải hạ dần;
+    // nhưng giữ bù trọng lực VĨNH VIỄN cũng sai: giá trị đó tính từ tư thế cuối
+    // cùng đọc được, mà tư thế thì vẫn thay đổi sau khi mất joint_states (người
+    // đẩy tay, hoặc tay tự trượt). Ôm một giá trị đóng băng không còn khớp tư thế
+    // thật thì chính nó thành nguồn mô-men sai. Vì vậy giữ có thời hạn rồi thả.
+    //
+    //   0 .. 20 ms          : hạ phần điều khiển, giữ nguyên phần trọng lực
+    //   20 ms .. 520 ms     : giữ trọng lực — đủ để bus/DDS vấp rồi hồi
+    //   520 ms .. 1020 ms   : hạ nốt trọng lực về 0
+    //   > 1020 ms           : PWM = 0 (motor tự do, cần kê đỡ)
+    const double kCmdRamp = 0.020;
+    const double kGravHold = 0.500;
+    const double kGravRamp = 0.500;
+
+    const double cmd_scale =
+        (elapsed < kCmdRamp) ? (1.0 - elapsed / kCmdRamp) : 0.0;
+    double grav_scale = 1.0;
+    if (elapsed >= kCmdRamp + kGravHold) {
+      const double t = elapsed - (kCmdRamp + kGravHold);
+      grav_scale = (t < kGravRamp) ? (1.0 - t / kGravRamp) : 0.0;
+    }
+
     RCLCPP_ERROR_THROTTLE(
-        this->get_logger(), *this->get_clock(), 1000, "stale joint_states -> zero PWM");
-    interbotix_xs_msgs::msg::JointGroupCommand zero_msg;
-    zero_msg.name = group_name_;
-    zero_msg.cmd.assign(joint_names_.size(), 0.0f);
-    pub_cmd_->publish(zero_msg);
+        this->get_logger(), *this->get_clock(), 1000,
+        "stale joint_states (%.3f s) -> cmd x%.2f, gravity x%.2f",
+        elapsed, cmd_scale, grav_scale);
+
+    interbotix_xs_msgs::msg::JointGroupCommand safe_msg;
+    safe_msg.name = group_name_;
+    safe_msg.cmd.resize(joint_names_.size(), 0.0f);
+    for (size_t i = 0; i < joint_names_.size(); ++i) {
+      const float grav = (i < last_grav_pwm_.size()) ? last_grav_pwm_[i] : 0.0f;
+      const float base = (i < last_cmd_pwm_.size()) ? last_cmd_pwm_[i] : 0.0f;
+      safe_msg.cmd[i] = static_cast<float>(grav_scale) * grav +
+                        static_cast<float>(cmd_scale) * (base - grav);
+    }
+    pub_cmd_->publish(safe_msg);
     return;
   }
+  in_watchdog_ramp_ = false;
 
   const size_t n = joint_names_.size();
   std::vector<float> cmd(n, 0.0f);
@@ -347,9 +405,11 @@ void FuzzyNode::onTimer() {
       }
     }
   } else {
+    const double kVelLimit = 13.7;  // ~131 Dynamixel units (0.229 rpm/unit) ≈ 13.7 rad/s
     for (size_t i = 0; i < kProfileDoF; ++i) {
+      qdot_ref_[i] = (reference_[i] - q_ref_[i]) * loop_rate_;
+      qdot_ref_[i] = std::clamp(qdot_ref_[i], -kVelLimit, kVelLimit);
       q_ref_[i] = reference_[i];
-      qdot_ref_[i] = 0.0;
     }
   }
 
@@ -357,7 +417,6 @@ void FuzzyNode::onTimer() {
     ref_msg.position[i] = (i < kProfileDoF) ? q_ref_[i] : reference_[i];
     ref_msg.velocity[i] = (i < kProfileDoF) ? qdot_ref_[i] : 0.0;
   }
-  pub_ref_->publish(ref_msg);
 
   std::vector<double> grav_torques(n, 0.0);
   if (grav_comp_ && enable_gravity_comp_) {
@@ -367,7 +426,9 @@ void FuzzyNode::onTimer() {
   for (size_t i = 0; i < n; ++i) {
     const size_t idx = js_index_.at(joint_names_[i]);
     const double pos = current_positions[i];
-    const double vel = last_js_.velocity.size() > idx ? last_js_.velocity[idx] : 0.0;
+    const double vel =
+        filtered_velocity_.size() > idx ? filtered_velocity_[idx] :
+        (last_js_.velocity.size() > idx ? last_js_.velocity[idx] : 0.0);
 
     const double ref_p = (i < kProfileDoF) ? q_ref_[i] : reference_[i];
     const double ref_v = (i < kProfileDoF) ? qdot_ref_[i] : 0.0;
@@ -398,15 +459,26 @@ void FuzzyNode::onTimer() {
     grav_msg.effort[i] = grav_pwm;
   }
 
+  // Lưu trạng thái lệnh gần nhất phục vụ ramp khi watchdog trip
+  last_cmd_pwm_ = cmd;
+  last_grav_pwm_.resize(n, 0.0f);
+  for (size_t i = 0; i < n; ++i) {
+    last_grav_pwm_[i] = static_cast<float>(grav_msg.effort[i]);
+  }
+
   interbotix_xs_msgs::msg::JointGroupCommand cmd_msg;
   cmd_msg.name = group_name_;
   cmd_msg.cmd = cmd;
   pub_cmd_->publish(cmd_msg);
 
-  pub_err_->publish(err_msg);
-  pub_edot_->publish(edot_msg);
-  pub_eff_->publish(eff_msg);
-  pub_grav_->publish(grav_msg);
+  // Throttle các topic debug xuống debug_publish_rate (mặc định 50Hz)
+  if (++dbg_cnt_ % dbg_div_ == 0) {
+    pub_ref_->publish(ref_msg);
+    pub_err_->publish(err_msg);
+    pub_edot_->publish(edot_msg);
+    pub_eff_->publish(eff_msg);
+    pub_grav_->publish(grav_msg);
+  }
 }
 
 int main(int argc, char ** argv) {

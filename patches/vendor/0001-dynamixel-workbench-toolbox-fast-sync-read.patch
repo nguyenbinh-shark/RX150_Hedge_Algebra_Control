@@ -1,0 +1,539 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b8992d4..663053f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -42,6 +42,7 @@ add_library(${LIB_NAME} SHARED
+   src/${PROJECT_NAME}/dynamixel_driver.cpp
+   src/${PROJECT_NAME}/dynamixel_tool.cpp
+   src/${PROJECT_NAME}/dynamixel_workbench.cpp
++  src/${PROJECT_NAME}/group_fast_sync_read_checked.cpp
+ )
+ ament_target_dependencies(${LIB_NAME} ${dependencies_lib})
+ 
+diff --git a/include/dynamixel_workbench_toolbox/dynamixel_driver.h b/include/dynamixel_workbench_toolbox/dynamixel_driver.h
+index d5a2747..8242ee3 100644
+--- a/include/dynamixel_workbench_toolbox/dynamixel_driver.h
++++ b/include/dynamixel_workbench_toolbox/dynamixel_driver.h
+@@ -20,6 +20,8 @@
+ #define DYNAMIXEL_DRIVER_H
+ 
+ #include "dynamixel_tool.h"
++#include "dynamixel_workbench_toolbox/group_fast_sync_read_checked.h"
++#include "dynamixel_workbench_toolbox/port_handler_low_latency.h"
+ 
+ #if defined(__OPENCR__) || defined(__OPENCM904__)
+   #include <Arduino.h>
+@@ -42,7 +44,12 @@ typedef struct
+ typedef struct 
+ {
+   const ControlItem *control_item;
+-  dynamixel::GroupSyncRead  *groupSyncRead;     
++  dynamixel::GroupSyncRead  *groupSyncRead;
++  dynamixel_workbench_toolbox::GroupFastSyncReadChecked *groupFastSyncRead;
++  dynamixel::GroupSyncRead  *activeRead;
++  bool fast_enabled;
++  uint32_t fast_fail_streak;
++  uint32_t fast_fallback_total;
+ } SyncReadHandler;
+ 
+ typedef struct
+@@ -152,6 +159,11 @@ class DynamixelDriver
+ 
+   bool addSyncReadHandler(uint16_t address, uint16_t length, const char **log = NULL);
+   bool addSyncReadHandler(uint8_t id, const char *item_name, const char **log = NULL);
++  bool addFastSyncReadHandler(uint16_t address, uint16_t length, const char **log = NULL);
++  bool addFastSyncReadHandler(uint8_t id, const char *item_name, const char **log = NULL);
++  bool probeFastSyncRead(uint8_t index, uint8_t *id, uint8_t id_num, const char **log = NULL);
++  bool isSyncReadFast(uint8_t index) const;
++  uint32_t getSyncReadFallbackCount(uint8_t index) const;
+ 
+   bool syncRead(uint8_t index, const char **log = NULL);
+   bool syncRead(uint8_t index, uint8_t *id, uint8_t id_num, const char **log = NULL);
+diff --git a/include/dynamixel_workbench_toolbox/group_fast_sync_read_checked.h b/include/dynamixel_workbench_toolbox/group_fast_sync_read_checked.h
+new file mode 100644
+index 0000000..af90f8d
+--- /dev/null
++++ b/include/dynamixel_workbench_toolbox/group_fast_sync_read_checked.h
+@@ -0,0 +1,44 @@
++/*******************************************************************************
++* Copyright 2026
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#ifndef DYNAMIXEL_WORKBENCH_TOOLBOX_GROUP_FAST_SYNC_READ_CHECKED_H
++#define DYNAMIXEL_WORKBENCH_TOOLBOX_GROUP_FAST_SYNC_READ_CHECKED_H
++
++#include <dynamixel_sdk/group_sync_read.h>
++
++namespace dynamixel_workbench_toolbox
++{
++
++class GroupFastSyncReadChecked : public dynamixel::GroupSyncRead
++{
++public:
++  GroupFastSyncReadChecked(
++    dynamixel::PortHandler *port,
++    dynamixel::PacketHandler *ph,
++    uint16_t start_address,
++    uint16_t data_length);
++
++  virtual ~GroupFastSyncReadChecked() { clearParam(); }
++
++  int txPacket();
++  int rxPacket();
++  int txRxPacket();
++};
++
++}  // namespace dynamixel_workbench_toolbox
++
++#endif // DYNAMIXEL_WORKBENCH_TOOLBOX_GROUP_FAST_SYNC_READ_CHECKED_H
++
+diff --git a/include/dynamixel_workbench_toolbox/port_handler_low_latency.h b/include/dynamixel_workbench_toolbox/port_handler_low_latency.h
+new file mode 100644
+index 0000000..386ec60
+--- /dev/null
++++ b/include/dynamixel_workbench_toolbox/port_handler_low_latency.h
+@@ -0,0 +1,69 @@
++/*******************************************************************************
++* Copyright 2026
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#ifndef DYNAMIXEL_WORKBENCH_TOOLBOX_PORT_HANDLER_LOW_LATENCY_H
++#define DYNAMIXEL_WORKBENCH_TOOLBOX_PORT_HANDLER_LOW_LATENCY_H
++
++#include <cstdlib>
++#include <dynamixel_sdk/port_handler_linux.h>
++
++namespace dynamixel_workbench_toolbox
++{
++
++class PortHandlerLowLatency : public dynamixel::PortHandlerLinux
++{
++public:
++  explicit PortHandlerLowLatency(const char *port_name)
++    : dynamixel::PortHandlerLinux(port_name),
++      latency_ms_(1.0)
++  {
++    const char *env_latency = std::getenv("DXL_LATENCY_MS");
++    if (env_latency != nullptr)
++    {
++      double val = std::atof(env_latency);
++      if (val > 0.0)
++      {
++        latency_ms_ = val;
++      }
++    }
++  }
++
++  virtual ~PortHandlerLowLatency() {}
++
++  void setPacketTimeout(uint16_t packet_length) override
++  {
++    int baud = getBaudRate();
++    double tx_time_per_byte = (baud > 0) ? ((1000.0 / static_cast<double>(baud)) * 10.0) : 0.01;
++    double timeout_ms = (tx_time_per_byte * static_cast<double>(packet_length)) + (latency_ms_ * 2.0) + 1.0;
++    dynamixel::PortHandlerLinux::setPacketTimeout(timeout_ms);
++  }
++
++  void setPacketTimeout(double msec) override
++  {
++    dynamixel::PortHandlerLinux::setPacketTimeout(msec);
++  }
++
++  double getLatencyMs() const { return latency_ms_; }
++  void setLatencyMs(double ms) { latency_ms_ = ms; }
++
++private:
++  double latency_ms_;
++};
++
++}  // namespace dynamixel_workbench_toolbox
++
++#endif // DYNAMIXEL_WORKBENCH_TOOLBOX_PORT_HANDLER_LOW_LATENCY_H
++
+diff --git a/src/dynamixel_workbench_toolbox/dynamixel_driver.cpp b/src/dynamixel_workbench_toolbox/dynamixel_driver.cpp
+index 3fdd155..23299cf 100644
+--- a/src/dynamixel_workbench_toolbox/dynamixel_driver.cpp
++++ b/src/dynamixel_workbench_toolbox/dynamixel_driver.cpp
+@@ -126,7 +126,7 @@ bool DynamixelDriver::begin(const char *device_name, uint32_t baud_rate, const c
+ 
+ bool DynamixelDriver::setPortHandler(const char *device_name, const char **log)
+ {
+-  portHandler_ = dynamixel::PortHandler::getPortHandler(device_name);
++  portHandler_ = new dynamixel_workbench_toolbox::PortHandlerLowLatency(device_name);
+ 
+   if (portHandler_->openPort())
+   {
+@@ -1058,6 +1058,11 @@ bool DynamixelDriver::addSyncReadHandler(uint16_t address, uint16_t length, cons
+                                                                                           packetHandler_,
+                                                                                           address,
+                                                                                           length);
++  syncReadHandler_[sync_read_handler_cnt_].groupFastSyncRead = NULL;
++  syncReadHandler_[sync_read_handler_cnt_].activeRead = syncReadHandler_[sync_read_handler_cnt_].groupSyncRead;
++  syncReadHandler_[sync_read_handler_cnt_].fast_enabled = false;
++  syncReadHandler_[sync_read_handler_cnt_].fast_fail_streak = 0;
++  syncReadHandler_[sync_read_handler_cnt_].fast_fallback_total = 0;
+ 
+   sync_read_handler_cnt_++;
+ 
+@@ -1087,6 +1092,11 @@ bool DynamixelDriver::addSyncReadHandler(uint8_t id, const char *item_name, cons
+                                                                                           packetHandler_,
+                                                                                           control_item->address,
+                                                                                           control_item->data_length);
++  syncReadHandler_[sync_read_handler_cnt_].groupFastSyncRead = NULL;
++  syncReadHandler_[sync_read_handler_cnt_].activeRead = syncReadHandler_[sync_read_handler_cnt_].groupSyncRead;
++  syncReadHandler_[sync_read_handler_cnt_].fast_enabled = false;
++  syncReadHandler_[sync_read_handler_cnt_].fast_fail_streak = 0;
++  syncReadHandler_[sync_read_handler_cnt_].fast_fallback_total = 0;
+ 
+   sync_read_handler_cnt_++;
+ 
+@@ -1094,10 +1104,111 @@ bool DynamixelDriver::addSyncReadHandler(uint8_t id, const char *item_name, cons
+   return true;       
+ }
+ 
++bool DynamixelDriver::addFastSyncReadHandler(uint16_t address, uint16_t length, const char **log)
++{
++  if (!addSyncReadHandler(address, length, log))
++    return false;
++
++  uint8_t idx = sync_read_handler_cnt_ - 1;
++  syncReadHandler_[idx].groupFastSyncRead = new dynamixel_workbench_toolbox::GroupFastSyncReadChecked(
++    portHandler_, packetHandler_, address, length);
++  syncReadHandler_[idx].fast_enabled = true;
++  syncReadHandler_[idx].activeRead = syncReadHandler_[idx].groupFastSyncRead;
++  return true;
++}
++
++bool DynamixelDriver::addFastSyncReadHandler(uint8_t id, const char *item_name, const char **log)
++{
++  if (!addSyncReadHandler(id, item_name, log))
++    return false;
++
++  uint8_t idx = sync_read_handler_cnt_ - 1;
++  const ControlItem *control_item = syncReadHandler_[idx].control_item;
++  if (control_item != NULL)
++  {
++    syncReadHandler_[idx].groupFastSyncRead = new dynamixel_workbench_toolbox::GroupFastSyncReadChecked(
++      portHandler_, packetHandler_, control_item->address, control_item->data_length);
++    syncReadHandler_[idx].fast_enabled = true;
++    syncReadHandler_[idx].activeRead = syncReadHandler_[idx].groupFastSyncRead;
++  }
++  return true;
++}
++
++bool DynamixelDriver::probeFastSyncRead(uint8_t index, uint8_t *id, uint8_t id_num, const char **log)
++{
++  if (index >= sync_read_handler_cnt_ || syncReadHandler_[index].groupFastSyncRead == NULL)
++  {
++    if (log != NULL) *log = "Fast sync read handler not available";
++    return false;
++  }
++
++  syncReadHandler_[index].groupFastSyncRead->clearParam();
++  for (int i = 0; i < id_num; i++)
++  {
++    syncReadHandler_[index].groupFastSyncRead->addParam(id[i]);
++  }
++  int res = syncReadHandler_[index].groupFastSyncRead->txRxPacket();
++  if (res == COMM_SUCCESS)
++  {
++    syncReadHandler_[index].fast_enabled = true;
++    syncReadHandler_[index].activeRead = syncReadHandler_[index].groupFastSyncRead;
++    if (log != NULL) *log = "Fast Sync Read probe SUCCEEDED";
++    return true;
++  }
++  else
++  {
++    syncReadHandler_[index].fast_enabled = false;
++    syncReadHandler_[index].activeRead = syncReadHandler_[index].groupSyncRead;
++    if (log != NULL) *log = packetHandler_->getTxRxResult(res);
++    return false;
++  }
++}
++
++bool DynamixelDriver::isSyncReadFast(uint8_t index) const
++{
++  if (index >= sync_read_handler_cnt_) return false;
++  return syncReadHandler_[index].fast_enabled;
++}
++
++uint32_t DynamixelDriver::getSyncReadFallbackCount(uint8_t index) const
++{
++  if (index >= sync_read_handler_cnt_) return 0;
++  return syncReadHandler_[index].fast_fallback_total;
++}
++
+ bool DynamixelDriver::syncRead(uint8_t index, const char **log)
+ {
+   ErrorFromSDK sdk_error = {0, false, false, 0};
+ 
++  if (syncReadHandler_[index].fast_enabled && syncReadHandler_[index].groupFastSyncRead != NULL)
++  {
++    syncReadHandler_[index].groupFastSyncRead->clearParam();
++    for (int i = 0; i < tools_cnt_; i++)
++    {
++      for (int j = 0; j < tools_[i].getDynamixelCount(); j++)
++      {
++        syncReadHandler_[index].groupFastSyncRead->addParam(tools_[i].getID()[j]);
++      }
++    }
++    sdk_error.dxl_comm_result = syncReadHandler_[index].groupFastSyncRead->txRxPacket();
++    if (sdk_error.dxl_comm_result == COMM_SUCCESS)
++    {
++      syncReadHandler_[index].activeRead = syncReadHandler_[index].groupFastSyncRead;
++      syncReadHandler_[index].fast_fail_streak = 0;
++      if (log != NULL) *log = "[DynamixelDriver] Succeeded to fast sync read!";
++      return true;
++    }
++    else
++    {
++      syncReadHandler_[index].fast_fail_streak++;
++      syncReadHandler_[index].fast_fallback_total++;
++      if (syncReadHandler_[index].fast_fail_streak >= 3)
++      {
++        syncReadHandler_[index].fast_enabled = false;
++      }
++    }
++  }
++
+   syncReadHandler_[index].groupSyncRead->clearParam();
+   for (int i = 0; i < tools_cnt_; i++)
+   {
+@@ -1119,6 +1230,7 @@ bool DynamixelDriver::syncRead(uint8_t index, const char **log)
+     return false;
+   }
+ 
++  syncReadHandler_[index].activeRead = syncReadHandler_[index].groupSyncRead;
+   if (log != NULL) *log = "[DynamixelDriver] Succeeded to sync read!";
+   return true;
+ }
+@@ -1127,6 +1239,32 @@ bool DynamixelDriver::syncRead(uint8_t index, uint8_t *id, uint8_t id_num, const
+ {
+   ErrorFromSDK sdk_error = {0, false, false, 0};
+ 
++  if (syncReadHandler_[index].fast_enabled && syncReadHandler_[index].groupFastSyncRead != NULL)
++  {
++    syncReadHandler_[index].groupFastSyncRead->clearParam();
++    for (int i = 0; i < id_num; i++)
++    {
++      syncReadHandler_[index].groupFastSyncRead->addParam(id[i]);
++    }
++    sdk_error.dxl_comm_result = syncReadHandler_[index].groupFastSyncRead->txRxPacket();
++    if (sdk_error.dxl_comm_result == COMM_SUCCESS)
++    {
++      syncReadHandler_[index].activeRead = syncReadHandler_[index].groupFastSyncRead;
++      syncReadHandler_[index].fast_fail_streak = 0;
++      if (log != NULL) *log = "[DynamixelDriver] Succeeded to fast sync read!";
++      return true;
++    }
++    else
++    {
++      syncReadHandler_[index].fast_fail_streak++;
++      syncReadHandler_[index].fast_fallback_total++;
++      if (syncReadHandler_[index].fast_fail_streak >= 3)
++      {
++        syncReadHandler_[index].fast_enabled = false;
++      }
++    }
++  }
++
+   syncReadHandler_[index].groupSyncRead->clearParam();
+   for (int i = 0; i < id_num; i++)
+   {
+@@ -1145,6 +1283,7 @@ bool DynamixelDriver::syncRead(uint8_t index, uint8_t *id, uint8_t id_num, const
+     return false;
+   }
+ 
++  syncReadHandler_[index].activeRead = syncReadHandler_[index].groupSyncRead;
+   if (log != NULL) *log = "[DynamixelDriver] Succeeded to sync read!";
+   return true;
+ }
+@@ -1157,7 +1296,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, int32_t *data, const char *
+   {
+     for (int j = 0; j < tools_[i].getDynamixelCount(); j++)
+     {
+-      sdk_error.dxl_getdata_result = syncReadHandler_[index].groupSyncRead->isAvailable(tools_[i].getID()[j], 
++      sdk_error.dxl_getdata_result = syncReadHandler_[index].activeRead->isAvailable(tools_[i].getID()[j], 
+                                                                                         syncReadHandler_[index].control_item->address, 
+                                                                                         syncReadHandler_[index].control_item->data_length);
+       if (sdk_error.dxl_getdata_result != true)
+@@ -1167,7 +1306,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, int32_t *data, const char *
+       }
+       else
+       {
+-        data[i+j] = syncReadHandler_[index].groupSyncRead->getData(tools_[i].getID()[j], 
++        data[i+j] = syncReadHandler_[index].activeRead->getData(tools_[i].getID()[j], 
+                                                                     syncReadHandler_[index].control_item->address, 
+                                                                     syncReadHandler_[index].control_item->data_length);
+       }
+@@ -1184,7 +1323,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, uint8_t *id, uint8_t id_num
+ 
+   for (int i = 0; i < id_num; i++)
+   {
+-    sdk_error.dxl_getdata_result = syncReadHandler_[index].groupSyncRead->isAvailable(id[i], 
++    sdk_error.dxl_getdata_result = syncReadHandler_[index].activeRead->isAvailable(id[i], 
+                                                                                       syncReadHandler_[index].control_item->address, 
+                                                                                       syncReadHandler_[index].control_item->data_length);
+     if (sdk_error.dxl_getdata_result != true)
+@@ -1194,7 +1333,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, uint8_t *id, uint8_t id_num
+     }
+     else
+     {
+-      data[i] = syncReadHandler_[index].groupSyncRead->getData(id[i], 
++      data[i] = syncReadHandler_[index].activeRead->getData(id[i], 
+                                                                 syncReadHandler_[index].control_item->address, 
+                                                                 syncReadHandler_[index].control_item->data_length);
+     }
+@@ -1210,7 +1349,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, uint8_t *id, uint8_t id_num
+   
+   for (int i = 0; i < id_num; i++)
+   {
+-    sdk_error.dxl_getdata_result = syncReadHandler_[index].groupSyncRead->isAvailable(id[i], 
++    sdk_error.dxl_getdata_result = syncReadHandler_[index].activeRead->isAvailable(id[i], 
+                                                                                       address, 
+                                                                                       length);
+     if (sdk_error.dxl_getdata_result != true)
+@@ -1220,7 +1359,7 @@ bool DynamixelDriver::getSyncReadData(uint8_t index, uint8_t *id, uint8_t id_num
+     }
+     else
+     {
+-      data[i] = syncReadHandler_[index].groupSyncRead->getData(id[i], 
++      data[i] = syncReadHandler_[index].activeRead->getData(id[i], 
+                                                               address, 
+                                                               length);
+     }
+diff --git a/src/dynamixel_workbench_toolbox/group_fast_sync_read_checked.cpp b/src/dynamixel_workbench_toolbox/group_fast_sync_read_checked.cpp
+new file mode 100644
+index 0000000..b4e3b47
+--- /dev/null
++++ b/src/dynamixel_workbench_toolbox/group_fast_sync_read_checked.cpp
+@@ -0,0 +1,105 @@
++/*******************************************************************************
++* Copyright 2026
++*
++* Licensed under the Apache License, Version 2.0 (the "License");
++* you may not use this file except in compliance with the License.
++* You may obtain a copy of the License at
++*
++*     http://www.apache.org/licenses/LICENSE-2.0
++*
++* Unless required by applicable law or agreed to in writing, software
++* distributed under the License is distributed on an "AS IS" BASIS,
++* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++* See the License for the specific language governing permissions and
++* limitations under the License.
++*******************************************************************************/
++
++#include "dynamixel_workbench_toolbox/group_fast_sync_read_checked.h"
++#include <cstdlib>
++
++namespace dynamixel_workbench_toolbox
++{
++
++static const int RXPACKET_MAX_LEN = 1024;
++static const int PKT_ID = 4;
++static const int PKT_PARAMETER0 = 8;
++
++GroupFastSyncReadChecked::GroupFastSyncReadChecked(
++  dynamixel::PortHandler *port,
++  dynamixel::PacketHandler *ph,
++  uint16_t start_address,
++  uint16_t data_length)
++: dynamixel::GroupSyncRead(port, ph, start_address, data_length)
++{
++  clearParam();
++}
++
++int GroupFastSyncReadChecked::txPacket()
++{
++  if ((1.0 == ph_->getProtocolVersion()) || (id_list_.empty()))
++    return COMM_NOT_AVAILABLE;
++
++  if ((true == is_param_changed_) || (0 == param_))
++    makeParam();
++
++  return ph_->fastSyncReadTx(port_, start_address_, data_length_, param_, static_cast<uint16_t>(id_list_.size()));
++}
++
++int GroupFastSyncReadChecked::rxPacket()
++{
++  last_result_ = false;
++
++  if ((1.0 == ph_->getProtocolVersion()) || (id_list_.empty()))
++    return COMM_NOT_AVAILABLE;
++
++  int count = static_cast<int>(id_list_.size());
++  int result = COMM_RX_FAIL;
++  uint8_t *rxpacket = static_cast<uint8_t *>(std::malloc(RXPACKET_MAX_LEN));
++  if (rxpacket == nullptr)
++    return result;
++
++  do {
++    result = ph_->rxPacket(port_, rxpacket, true);
++  } while ((COMM_SUCCESS == result) && (BROADCAST_ID != rxpacket[PKT_ID]));
++
++  if ((COMM_SUCCESS == result) && (BROADCAST_ID == rxpacket[PKT_ID])) {
++    int index = PKT_PARAMETER0;
++    bool corrupt = false;
++    for (int i = 0; i < count; ++i) {
++      uint8_t expected_id = id_list_[i];
++      uint8_t actual_id = rxpacket[index + 1];
++      if (actual_id != expected_id) {
++        corrupt = true;
++        break;
++      }
++      *error_list_[expected_id] = static_cast<uint8_t>(rxpacket[index]);
++      for (uint16_t s = 0; s < data_length_; s++) {
++        data_list_[expected_id][s] = rxpacket[index + 2 + s];
++      }
++      index += (data_length_ + 4);
++    }
++    if (corrupt) {
++      result = COMM_RX_CORRUPT;
++      last_result_ = false;
++    } else {
++      last_result_ = true;
++    }
++  }
++
++  std::free(rxpacket);
++  return result;
++}
++
++int GroupFastSyncReadChecked::txRxPacket()
++{
++  if (1.0 == ph_->getProtocolVersion())
++    return COMM_NOT_AVAILABLE;
++
++  int result = txPacket();
++  if (COMM_SUCCESS != result)
++    return result;
++  return rxPacket();
++}
++
++}  // namespace dynamixel_workbench_toolbox
++

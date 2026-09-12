@@ -96,8 +96,28 @@ echo "  ✓ 01_git.txt"
   echo "--- U2D2 / serial ---"
   ls -l /dev/ttyDXL /dev/ttyUSB* /dev/ttyACM* 2>&1
   echo
+  echo "--- FTDI latency_timer ---"
+  if [ -e /dev/ttyDXL ]; then
+    REAL_DEV="$(basename "$(readlink -f /dev/ttyDXL 2>/dev/null || echo "")")"
+    if [ -f "/sys/bus/usb-serial/devices/$REAL_DEV/latency_timer" ]; then
+      cat "/sys/bus/usb-serial/devices/$REAL_DEV/latency_timer"
+    else
+      echo "không tìm thấy sysfs latency_timer cho $REAL_DEV"
+    fi
+  else
+    echo "không có /dev/ttyDXL"
+  fi
+  echo
   echo "--- tiến trình xs_sdk (>1 dòng = TRANH CHẤP BUS) ---"
   pgrep -af xs_sdk 2>&1 || echo "(không có xs_sdk nào đang chạy)"
+  echo
+  echo "--- xs_sdk memory maps (kiểm tra thư viện nạp từ repo nào) ---"
+  XS_PID="$(pgrep -f xs_sdk | head -1 || echo "")"
+  if [ -n "$XS_PID" ] && [ -r "/proc/$XS_PID/maps" ]; then
+    grep -E 'dynamixel|interbotix' "/proc/$XS_PID/maps" | awk '{print $NF}' | sort -u
+  else
+    echo "(xs_sdk không chạy hoặc không đọc được maps)"
+  fi
   echo
   echo "--- USB ---"
   lsusb 2>&1
@@ -123,6 +143,8 @@ else
   run 04_topics.txt     15 ros2 topic list -t
   run 05_actions.txt    15 ros2 action list -t
   run 06_services.txt   20 ros2 service list -t
+  run 07_firmware_ver.txt 10 ros2 service call /rx150/get_motor_registers \
+    interbotix_xs_msgs/srv/RegisterValues "{cmd_type: group, name: all, reg: Firmware_Version, value: 0}"
 
   # ── 3. Nhịp dữ liệu — hz tự dừng bằng timeout, đó là cách dùng đúng ──
   run 10_hz_joint_states.txt   8 ros2 topic hz /rx150/joint_states
