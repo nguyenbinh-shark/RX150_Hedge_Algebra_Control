@@ -5,15 +5,46 @@
     loop_rate: 100.0          # = update_rate; Phase 2 bump lên 500 cùng patch FastSyncRead
     watchdog_timeout: 0.2
     reference_pose: [0.0, -1.80, 1.55, 0.8, 0.0]   # 5 khớp arm [waist,shoulder,elbow,wrist_angle,wrist_rotate] (rad); [] -> lấy sleep_positions
+    # === TUNE 2026-09-12: khớp đáp ứng với bộ HAC (rx150_hac_gains.yaml) =========
+    # Luật HAC: u = (2c/3a)*clamp(e,±error_limit) + (c/3b)*clamp(ed,±error_dot_limit)
+    #   a=0.3, b=12, c=1200  ->  Kp = 2c/3a = 2666.7 PWM/rad,  Kd = c/3b = 33.33 PWM/(rad/s)
+    # Luật Fuzzy: u = Ku * F(clamp(Ke*e,±1), clamp(Ked*ed,±1)),  F = mặt Mamdani 5x5.
+    # Đo mặt F bằng chính fuzzy_type1.c (lưới 401x401): F đối xứng e<->ed,
+    # lẻ (F(-x,-y) = -F(x,y)), độ dốc cát tuyến ổn định S = 2/3 trên [0.5, 1.0].
+    # Suy ra 3 ràng buộc khớp Fuzzy với HAC:
+    #   (1) miền bão hoà error   :  Ke  = 1/error_limit          = [2, 3, 3, 5, 2]
+    #   (2) tỉ lệ cản / đàn hồi    :  Ked = Ke * Kd/Kp = Ke * a/(2b) = Ke * 0.0125
+    #   (3) độ khuếch đại vòng hở :  Ku  = Kp / (S * Ke) = 4000 / Ke
+    # Kiểm chứng số (lưới e±0.6 rad x ed±3.14 rad/s, trọng số Gauss σe=0.12):
+    #   RMSE |u_fuzzy - u_hac|  cũ -> mới (PWM):
+    #   waist 75->30, shoulder 108->22, elbow 105->22, wrist_angle 187->19, wrist_rotate 49->30.
+    #   Điểm bão hoà 600 PWM: HAC 12.89° vs Fuzzy mới 12.6-13.3° (cũ 5.8-16.6°).
+    #   wrist_angle trần ở 533 PWM ở cả hai bộ (do error_limit 0.2 < u_max/Kp).
+    # SAI KHÁC CÒN LẠI (không khử được bằng gain vô hướng): mặt Mamdani dốc hơn
+    #   quanh gốc (S ≈ 0.887 khi |e_n| < 0.05) nên Fuzzy cứng hơn HAC ~1.33-1.42x
+    #   ở sai số rất nhỏ (<1°). Đây là phần phi tuyến của fuzzy, và nó lệch về
+    #   phía CÓ LỢI cho sai số xác lập. Nếu phần cứng rần/limit-cycle quanh đích,
+    #   đổi sang bản bảo thủ Ku = 3000/Ke = [1500, 1000, 1000, 600, 1500] (khớp gain
+    #   tuyến tính hoá tại gốc thay vì khớp toàn miền; RMSE tăng 22->73 PWM).
+    # ---------------------------------------------------------------------------
+    # Ke = 1/error_limit của HAC [0.5, 0.333, 0.333, 0.2, 0.5] (giữ nguyên).
     Ke: [2.0, 3.0, 3.0, 5.0, 2.0]
-    Ked: [0.005, 5e-05, 0.005, 0.005, 0.0005]
+    # Ked = Ke * a/(2b) = Ke * 0.0125 -> tỉ lệ Kd/Kp giống hệt HAC.
+    # (bộ cũ [0.005, 5e-05, ...] làm edn ≈ 0 => fuzzy gần như thuần P, không có cản:
+    #  thành phần cản của shoulder ở ed=3.14 rad/s chỉ 0.3 PWM so với 104.7 PWM của HAC.)
+    Ked: [0.025, 0.0375, 0.0375, 0.0625, 0.025]
     # Ku = gain đầu ra (tunable). Bản gốc gộp luôn Ku vào u_max; nay tách riêng để tune độ khuếch đại
-    # vòng kín độc lập với giới hạn an toàn (giá trị = u_max cũ -> giữ nguyên đáp ứng ban đầu).
-    # Đo trên phần cứng 2026-09-09: bộ cũ [600,800,800,700,700] để lại sai số xác lập
-    # 3.78° ở elbow ⇒ vượt verify_tolerance_rad (3.44°) của tầng task, 'về home' báo
-    # thất bại. Nhân 2.5 (giữ nguyên tỉ lệ giữa các khớp) đưa sai số lớn nhất về 1.49°.
-    # Mức phẳng 3000 chỉ được 1.40° — phần dư còn lại là ma sát/rơ, không phải thiếu gain.
-    Ku: [1500.0, 2000.0, 2000.0, 1750.0, 1750.0]
+    # vòng kín độc lập với giới hạn an toàn.
+    # Ku = Kp/(S*Ke) = 4000/Ke. Lưu ý Ku nay TỈ LỆ NGHỊCH với Ke: HAC dùng cùng một
+    # Kp = 2c/3a cho mọi khớp, nên khớp nào chuẩn hoá error mạnh hơn (Ke lớn) phải
+    # bù lại bằng Ku nhỏ hơn. Bộ cũ [1500,2000,2000,1750,1750] tăng theo Ke nên
+    # wrist_angle cứng gấp 2.9x HAC còn waist thì mềm hơn — đó là sai khác lớn nhất.
+    # Lịch sử (giữ làm provenance, ĐÃ BỊ THAY BỞI tune 2026-09-12):
+    #   Đo trên phần cứng 2026-09-09: bộ [600,800,800,700,700] để lại sai số xác lập
+    #   3.78° ở elbow ⇒ vượt verify_tolerance_rad (3.44°) của tầng task, 'về home' báo
+    #   thất bại. Nhân 2.5 đưa sai số lớn nhất về 1.49°; mức phẳng 3000 được 1.40°
+    #   — phần dư còn lại là ma sát/rơ, không phải thiếu gain.
+    Ku: [2000.0, 1333.33, 1333.33, 800.0, 2000.0]
     # u_max nay CHỈ là ngưỡng bão hòa an toàn (hardware cap ≤ ±885), KHÔNG còn là gain điều khiển.
     u_max: [600.0, 600.0, 600.0, 600.0, 600.0]
     # --- Gravity Compensation (Pinocchio RNEA) ---

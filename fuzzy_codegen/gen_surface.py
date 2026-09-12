@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Evaluate fuzzy_type1.fis over a 2D (e, ed) grid and emit surface.json
-for the 3D control-surface artifact. Evaluates the FIS natively in Python
-(source of truth = the .fis), so it does not depend on the generated C."""
+"""Evaluate a .fis over a 2D (e, ed) grid and emit surface.json for the 3D
+control-surface artifact. Evaluates the FIS natively in Python (source of
+truth = the .fis), so it does not depend on the generated C.
+
+Usage:
+    python3 gen_surface.py [fuzzy_type1.fis] [-o surface.json] [-N 41]
+"""
+import argparse
 import json
 import math
 import os
 
 import fis2c  # reuse the parser
 
-FIS_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fuzzy_type1.fis')
-OUT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'surface.json')
-N = 41              # grid resolution per axis
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_FIS = os.path.join(HERE, 'fuzzy_type1.fis')
+DEFAULT_OUT = os.path.join(HERE, 'surface.json')
+N = 41              # grid resolution per axis (default, override with -N)
 DEFUZZ_N = 201      # centroid discretization (matches generated C)
 
 
@@ -131,12 +137,22 @@ def eval_fis(fis, in_vals):
     return out
 
 
-def main():
-    fis = fis2c.parse_fis(FIS_PATH)
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="Sample a .fis into surface.json.")
+    ap.add_argument('fis', nargs='?', default=DEFAULT_FIS,
+                    help="path to the .fis (default: %s)" % os.path.basename(DEFAULT_FIS))
+    ap.add_argument('-o', '--out', default=DEFAULT_OUT,
+                    help="output json (default: %s)" % os.path.basename(DEFAULT_OUT))
+    ap.add_argument('-N', type=int, default=N,
+                    help="grid resolution per axis (default: %d)" % N)
+    args = ap.parse_args(argv)
+    N_grid, OUT_PATH = args.N, args.out
+
+    fis = fis2c.parse_fis(args.fis)
     e_lo, e_hi = fis.inputs[0].range
     ed_lo, ed_hi = fis.inputs[1].range
-    es = [e_lo + (e_hi - e_lo) * i / (N - 1) for i in range(N)]
-    eds = [ed_lo + (ed_hi - ed_lo) * i / (N - 1) for i in range(N)]
+    es = [e_lo + (e_hi - e_lo) * i / (N_grid - 1) for i in range(N_grid)]
+    eds = [ed_lo + (ed_hi - ed_lo) * i / (N_grid - 1) for i in range(N_grid)]
     Z = []
     zmin = zmax = 0.0
     for j, ed in enumerate(eds):
@@ -163,7 +179,7 @@ def main():
     with open(OUT_PATH, 'w') as f:
         json.dump(data, f)
     print('surface: %dx%d, z in [%.4f, %.4f], wrote %s'
-          % (N, N, zmin, zmax, OUT_PATH))
+          % (N_grid, N_grid, zmin, zmax, OUT_PATH))
     # quick sanity prints
     print('f(0,0)        = % .5f' % eval_fis(fis, [0.0, 0.0])[0])
     print('f(-1,-1)      = % .5f' % eval_fis(fis, [-1.0, -1.0])[0])

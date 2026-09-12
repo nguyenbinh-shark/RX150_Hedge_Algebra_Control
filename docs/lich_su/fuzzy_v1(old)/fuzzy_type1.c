@@ -6,7 +6,7 @@
 #define FUZZY_NO 1
 #define FUZZY_NR 25
 #define FUZZY_MAXMI 5
-#define FUZZY_MAXMO 7
+#define FUZZY_MAXMO 5
 #define FUZZY_N 201
 
 typedef enum {
@@ -82,13 +82,13 @@ static float imp(float w, float mu) { return (w < mu) ? w : mu; } /* IMP=min */
 
 static const int in_nmf[FUZZY_NI] = {5, 5};
 static const MFDef in_mf[FUZZY_NI][FUZZY_MAXMI] = {
-  {{MF_TRAPMF, {-2.0f, -1.5f, -1.0f, -0.5f}}, {MF_TRIMF, {-1.0f, -0.5f, 0.0f, 0.0f}}, {MF_TRIMF, {-0.5f, 0.0f, 0.5f, 0.0f}}, {MF_TRIMF, {0.0f, 0.5f, 1.0f, 0.0f}}, {MF_TRAPMF, {0.5f, 1.0f, 1.5f, 2.0f}}},
-  {{MF_TRAPMF, {-2.0f, -1.5f, -1.0f, -0.5f}}, {MF_TRIMF, {-1.0f, -0.5f, 0.0f, 0.0f}}, {MF_TRIMF, {-0.5f, 0.0f, 0.5f, 0.0f}}, {MF_TRIMF, {0.0f, 0.5f, 1.0f, 0.0f}}, {MF_TRAPMF, {0.5f, 1.0f, 1.5f, 2.0f}}}
+  {{MF_ZMF, {-0.8f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.0f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.4f, 0.0f, 0.0f}}, {MF_SMF, {0.4f, 0.8f, 0.0f, 0.0f}}},
+  {{MF_ZMF, {-0.8f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.0f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.4f, 0.0f, 0.0f}}, {MF_SMF, {0.4f, 0.8f, 0.0f, 0.0f}}}
 };
 
-static const int out_nmf[FUZZY_NO] = {7};
+static const int out_nmf[FUZZY_NO] = {5};
 static const MFDef out_mf[FUZZY_NO][FUZZY_MAXMO] = {
-  {{MF_TRAPMF, {-2.0f, -1.6667f, -1.0f, -0.6667f}}, {MF_TRIMF, {-1.0f, -0.6667f, -0.3333f, 0.0f}}, {MF_TRIMF, {-0.6667f, -0.3333f, 0.0f, 0.0f}}, {MF_TRIMF, {-0.3333f, 0.0f, 0.3333f, 0.0f}}, {MF_TRIMF, {0.0f, 0.3333f, 0.6667f, 0.0f}}, {MF_TRIMF, {0.3333f, 0.6667f, 1.0f, 0.0f}}, {MF_TRAPMF, {0.6667f, 1.0f, 1.6667f, 2.0f}}}
+  {{MF_ZMF, {-0.8f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, -0.4f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.0f, 0.0f, 0.0f}}, {MF_GAUSSMF, {0.15f, 0.4f, 0.0f, 0.0f}}, {MF_SMF, {0.4f, 0.8f, 0.0f, 0.0f}}}
 };
 
 static const float out_lo[FUZZY_NO] = {-1.0f};
@@ -98,29 +98,29 @@ typedef struct { int in[FUZZY_NI]; int out[FUZZY_NO]; float weight; int conn; } 
 static const FuzzyRule rules[FUZZY_NR] = {
   { { 1, 1 }, { 1 }, 1.0f, 1 },
   { { 2, 1 }, { 1 }, 1.0f, 1 },
-  { { 3, 1 }, { 2 }, 1.0f, 1 },
-  { { 4, 1 }, { 3 }, 1.0f, 1 },
+  { { 3, 1 }, { 1 }, 1.0f, 1 },
+  { { 4, 1 }, { 2 }, 1.0f, 1 },
   { { 5, 1 }, { 4 }, 1.0f, 1 },
   { { 1, 2 }, { 1 }, 1.0f, 1 },
-  { { 2, 2 }, { 2 }, 1.0f, 1 },
-  { { 3, 2 }, { 3 }, 1.0f, 1 },
+  { { 2, 2 }, { 1 }, 1.0f, 1 },
+  { { 3, 2 }, { 2 }, 1.0f, 1 },
   { { 4, 2 }, { 4 }, 1.0f, 1 },
   { { 5, 2 }, { 5 }, 1.0f, 1 },
-  { { 1, 3 }, { 2 }, 1.0f, 1 },
-  { { 2, 3 }, { 3 }, 1.0f, 1 },
-  { { 3, 3 }, { 4 }, 1.0f, 1 },
-  { { 4, 3 }, { 5 }, 1.0f, 1 },
-  { { 5, 3 }, { 6 }, 1.0f, 1 },
-  { { 1, 4 }, { 3 }, 1.0f, 1 },
-  { { 2, 4 }, { 4 }, 1.0f, 1 },
-  { { 3, 4 }, { 5 }, 1.0f, 1 },
-  { { 4, 4 }, { 6 }, 1.0f, 1 },
-  { { 5, 4 }, { 7 }, 1.0f, 1 },
-  { { 1, 5 }, { 4 }, 1.0f, 1 },
-  { { 2, 5 }, { 5 }, 1.0f, 1 },
-  { { 3, 5 }, { 6 }, 1.0f, 1 },
-  { { 4, 5 }, { 7 }, 1.0f, 1 },
-  { { 5, 5 }, { 7 }, 1.0f, 1 }
+  { { 1, 3 }, { 1 }, 1.0f, 1 },
+  { { 2, 3 }, { 2 }, 1.0f, 1 },
+  { { 3, 3 }, { 3 }, 1.0f, 1 },
+  { { 4, 3 }, { 4 }, 1.0f, 1 },
+  { { 5, 3 }, { 5 }, 1.0f, 1 },
+  { { 1, 4 }, { 1 }, 1.0f, 1 },
+  { { 2, 4 }, { 2 }, 1.0f, 1 },
+  { { 3, 4 }, { 4 }, 1.0f, 1 },
+  { { 4, 4 }, { 5 }, 1.0f, 1 },
+  { { 5, 4 }, { 5 }, 1.0f, 1 },
+  { { 1, 5 }, { 2 }, 1.0f, 1 },
+  { { 2, 5 }, { 4 }, 1.0f, 1 },
+  { { 3, 5 }, { 5 }, 1.0f, 1 },
+  { { 4, 5 }, { 5 }, 1.0f, 1 },
+  { { 5, 5 }, { 5 }, 1.0f, 1 }
 };
 
 void fuzzy_type1_eval_core(const float * in, float * out) {

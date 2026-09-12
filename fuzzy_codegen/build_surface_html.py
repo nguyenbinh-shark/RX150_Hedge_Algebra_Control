@@ -1,19 +1,33 @@
 #!/usr/bin/env python3
 """Assemble the interactive 3D control-surface artifact HTML from surface.json.
-Inlines the grid data; all rendering is self-contained canvas JS (no CDN)."""
+Inlines the grid data; all rendering is self-contained canvas JS (no CDN).
+
+Usage:
+    python3 build_surface_html.py [surface.json] [-o fuzzy_surface.html]
+"""
+import argparse
 import json
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-data = json.load(open(os.path.join(HERE, 'surface.json')))
+_ap = argparse.ArgumentParser(description="surface.json -> self-contained HTML.")
+_ap.add_argument('json', nargs='?', default=os.path.join(HERE, 'surface.json'),
+                 help="grid produced by gen_surface.py (default: surface.json)")
+_ap.add_argument('-o', '--out', default=os.path.join(HERE, 'fuzzy_surface.html'),
+                 help="output html (default: fuzzy_surface.html)")
+_args = _ap.parse_args()
+
+data = json.load(open(_args.json))
 DATA = json.dumps(data, separators=(',', ':'))
+# FIS name goes in the title so two .fis variants do not produce look-alike pages
+NAME = data.get('name') or 'fuzzy'
 
 HTML = r'''<!doctype html>
 <html lang="vi">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Mặt điều khiển fuzzy — fuzzy_type1</title>
+<title>Mặt điều khiển fuzzy — @@NAME@@</title>
 <style>
 :root{
   --bg:#f5f6f8; --panel:#ffffff; --panel2:#eef0f3;
@@ -81,7 +95,7 @@ canvas:active{cursor:grabbing}
 </head>
 <body>
 <div class="bar">
-  <h1>Mặt điều khiển fuzzy</h1>
+  <h1>Mặt điều khiển fuzzy — @@NAME@@</h1>
   <span class="sub" id="sub">z = f(e, ed)</span>
   <span class="sp"></span>
   <button id="reset">Đặt lại góc nhìn</button>
@@ -269,8 +283,8 @@ readTheme();resize();
 </html>
 '''
 
-html = HTML.replace('@@DATA@@', DATA)
-out = os.path.join(HERE, 'fuzzy_surface.html')
+html = HTML.replace('@@DATA@@', DATA).replace('@@NAME@@', NAME)
+out = _args.out
 with open(out, 'w') as f:
     f.write(html)
 print('wrote', out, '(%d bytes)' % len(html))
