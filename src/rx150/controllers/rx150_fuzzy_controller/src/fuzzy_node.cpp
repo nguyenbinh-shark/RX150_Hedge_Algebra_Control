@@ -78,6 +78,7 @@ FuzzyNode::FuzzyNode() : rclcpp::Node("fuzzy_node") {
   pub_ref_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "fuzzy/reference", rclcpp::SensorDataQoS());  // profile q_ref/qdot_ref để plot
   pub_grav_ = this->create_publisher<sensor_msgs::msg::JointState>("fuzzy/gravity", rclcpp::SensorDataQoS());
+  pub_timing_ = this->create_publisher<std_msgs::msg::Float64MultiArray>("fuzzy/timing", rclcpp::SensorDataQoS());
   pub_cmd_ = this->create_publisher<interbotix_xs_msgs::msg::JointGroupCommand>("commands/joint_group", 10);
 
   // 6. Control timer
@@ -345,6 +346,7 @@ void FuzzyNode::onTimer() {
     return;
   }
   in_watchdog_ramp_ = false;
+  const auto tm_cyc0 = std::chrono::steady_clock::now();
 
   const size_t n = joint_names_.size();
   std::vector<float> cmd(n, 0.0f);
@@ -423,6 +425,7 @@ void FuzzyNode::onTimer() {
     grav_torques = grav_comp_->compute(current_positions);
   }
 
+  const auto tm_law0 = std::chrono::steady_clock::now();
   for (size_t i = 0; i < n; ++i) {
     const size_t idx = js_index_.at(joint_names_[i]);
     const double pos = current_positions[i];
@@ -458,6 +461,7 @@ void FuzzyNode::onTimer() {
     eff_msg.effort[i] = u;
     grav_msg.effort[i] = grav_pwm;
   }
+  const auto tm_law1 = std::chrono::steady_clock::now();
 
   // Lưu trạng thái lệnh gần nhất phục vụ ramp khi watchdog trip
   last_cmd_pwm_ = cmd;
@@ -471,8 +475,28 @@ void FuzzyNode::onTimer() {
   cmd_msg.cmd = cmd;
   pub_cmd_->publish(cmd_msg);
 
+  // Chi phí tính, so A/B với hac_node (đo y hệt bên đó):
+  //   khối luật = vòng từng khớp ở trên (luật + bù trọng lực + clamp)
+  //   chu kỳ    = sau watchdog -> publish lệnh (Ruckig + Pinocchio + luật + dựng
+  //               message), KHÔNG gồm publish debug bên dưới.
+  // fuzzy/timing = [law_mean_ns, law_max_ns, cycle_mean_ns, cycle_max_ns, n_cycles]
+  const auto tm_cyc1 = std::chrono::steady_clock::now();
+  const double law_ns = std::chrono::duration<double, std::nano>(tm_law1 - tm_law0).count();
+  const double cyc_ns = std::chrono::duration<double, std::nano>(tm_cyc1 - tm_cyc0).count();
+  tm_law_sum_ns_ += law_ns;
+  tm_law_max_ns_ = std::max(tm_law_max_ns_, law_ns);
+  tm_cyc_sum_ns_ += cyc_ns;
+  tm_cyc_max_ns_ = std::max(tm_cyc_max_ns_, cyc_ns);
+  ++tm_n_;
+
   // Throttle các topic debug xuống debug_publish_rate (mặc định 50Hz)
   if (++dbg_cnt_ % dbg_div_ == 0) {
+    std_msgs::msg::Float64MultiArray timing_msg;
+    timing_msg.data = {tm_law_sum_ns_ / tm_n_, tm_law_max_ns_, tm_cyc_sum_ns_ / tm_n_,
+                       tm_cyc_max_ns_, static_cast<double>(tm_n_)};
+    pub_timing_->publish(timing_msg);
+    tm_law_sum_ns_ = tm_law_max_ns_ = tm_cyc_sum_ns_ = tm_cyc_max_ns_ = 0.0;
+    tm_n_ = 0;
     pub_ref_->publish(ref_msg);
     pub_err_->publish(err_msg);
     pub_edot_->publish(edot_msg);

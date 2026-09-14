@@ -50,6 +50,7 @@ class HacNode : public rclcpp::Node {
   std::vector<double> error_limit_;
   std::vector<double> error_dot_limit_;
   std::vector<double> u_max_;
+  std::vector<double> joint_gain_scale_;  // nhân vào đầu ra mặt HAC, riêng từng khớp (≈ Ku của fuzzy)
   std::vector<double> reference_;
 
   double a_ = 0.3;
@@ -96,6 +97,14 @@ class HacNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_grav_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_grav_torque_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_fric_;
+  // Đo chi phí tính (A/B với fuzzy): gộp theo cửa sổ debug, phát ở hac/timing.
+  // Giữ ĐỐI XỨNG với rx150_fuzzy_node.hpp, nếu không số so sánh vô nghĩa.
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_timing_;
+  double tm_law_sum_ns_ = 0.0;
+  double tm_law_max_ns_ = 0.0;
+  double tm_cyc_sum_ns_ = 0.0;
+  double tm_cyc_max_ns_ = 0.0;
+  uint32_t tm_n_ = 0;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::vector<std::string> joint_names_;

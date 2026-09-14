@@ -15,11 +15,17 @@
 #   t2-rack     T2 + theo dõi giá NGAY TRONG RViz của T2 (thay cho rack-gui riêng)
 #   record      Thu dữ liệu một lần chạy tube_rack -> tuning_runs/ (CSV + meta)
 #   plot        Vẽ đồ thị từ thư mục do 'record' sinh ra
+#   ab-hac      SO SÁNH A/B: robot + CHỈ hac_node (không MoveIt/camera, bù trọng lực Pinocchio)
+#   ab-fuzzy    SO SÁNH A/B: robot + CHỈ fuzzy_node (cùng điều kiện với ab-hac)
+#   ab-run      Chạy task cố định N lượt trên bộ đang sống -> tuning_runs/ab_<session>/
+#   ab-report   Xử lý số liệu phiên A/B: bảng + thống kê + đồ thị (không cần ROS)
+#   ab-bench    Đo chi phí tính RIÊNG luật HAC vs Fuzzy (-O0/-O2, không cần robot)
 #   tune      Phiên TUNE PCL: pointcloud tuner GUI + RViz (T1 phải là t1-pcl)
 #   eetag     Theo dõi AprilTag trên TAY GẮP (30 fps) — nguồn đo ngoài cho bench
 #   eetag-hold  Bench camera vs encoder vs lệnh trên bộ pose tĩnh (cần eetag)
 #   eetag-watch Như trên nhưng CHỈ GHI, không ra lệnh — dùng khi task đang chạy
 #   eetag-tagcal ĐO VỊ TRÍ TAG trên tay gắp (3 lượt + gộp + cài, ~17 phút)
+#   onecal    HIỆU CHUẨN MỘT LẦN: tag tay gắp + TF camera giải chung (~22 phút)
 #   eetag-calib HIỆU CHUẨN LẠI TF CAMERA bằng tag tay gắp (39 pose lưới -> refine)
 #   eetag-pick  BÀI TEST bám quỹ đạo + tới điểm trên quỹ đạo mô phỏng GẮP
 #   tubes     Gắp ống nghiệm (YOLO, Layer 2)
@@ -195,6 +201,63 @@ case "${1:-}" in
         "$base/pass2/tagcal_hold.csv" \
         "$base/pass3/tagcal_hold.csv" --install
     ;;
+  eetag-onecal|onecal)
+    # HIỆU CHUẨN MỘT LẦN: offset tag trên tay gắp (X) + TF camera, giải CHUNG một
+    # bài AX=ZB trên 3 lượt tagcal (quét wrist_rotate ⇒ tách được t_X) + 1 lượt
+    # grid (trải rộng không gian ⇒ chốt được xoay camera). Thay cho tagcal rồi
+    # eetag-calib: hai bước tách rời thì bước sau chép lại sai số của bước trước;
+    # giải chung thì ee_tag (camera thấy) và rx150/ee_tag_link (URDF) trùng nhau
+    # theo cùng MỘT nghiệm.
+    #
+    # --keepout-rack của lượt grid đọc rack_pose.yaml: giá xê dịch thì snap thô
+    # trước (./rx150.sh rack-calib) để lưới pose biết đường tránh.
+    shift
+    stamp=$(date +%Y%m%d_%H%M%S)
+    base="tuning_runs/onecal_$stamp"
+    cfg="src/rx150/rx150_toolbox/rx150_perception/config"
+    echo "⚠️  3 lượt tagcal + 1 lượt grid (tổng ~22 phút). Tay máy tự đi rồi về SLEEP."
+    echo "    Cần: T1 + T2 + './rx150.sh eetag' đang chạy. Dọn chỗ quanh robot."
+    # Kiểm tag TRƯỚC: không thấy tag thì mọi lượt đều hỏng, đừng phí 4 lần preflight.
+    if ! timeout 8 ros2 topic echo /ee_tag/tag_detections --once >/dev/null 2>&1; then
+      echo "❌ Không có message trên /ee_tag/tag_detections."
+      echo "   - Terminal T3 đã chạy './rx150.sh eetag' chưa?"
+      echo "   - Camera có ảnh không: ros2 topic hz /camera/camera/color/image_raw"
+      exit 1
+    fi
+    fail() { echo "❌ Lượt $1 hỏng — DỪNG, không chạy tiếp. Xem nguyên nhân bên trên."; exit 1; }
+    i=0
+    for flags in "" "--creep-vel 0.15 --creep-sign 1" "--creep-vel 0.15 --creep-sign=-1"; do
+      i=$((i + 1))
+      echo; echo "════════ lượt $i/4 tagcal ${flags:-(bậc thang)} ════════"
+      ros2 run rx150_motion_common rx150_ee_tag_bench.py hold \
+          --pose-set tagcal --dwell 2.5 --settle 2.5 --label tagcal \
+          --out "$base/pass$i" --no-plot $flags "$@" || fail "$i/4"
+    done
+    echo; echo "════════ lượt 4/4 grid ════════"
+    ros2 run rx150_motion_common rx150_ee_tag_bench.py hold \
+        --pose-set grid --grid-radii=0.16,0.24,0.31 --grid-heights=0.12,0.20,0.28 \
+        --grid-waists-deg=-40,-15,15,40,60 --keepout-rack --dwell 3.5 --settle 2.5 \
+        --label grid --out "$base/grid" --no-plot "$@" || fail "4/4"
+    echo; echo "════════ giải chung X + camera trên 4 lượt ════════"
+    ros2 run rx150_motion_common rx150_ee_tag_bench.py tagoffset \
+        "$base/pass1/tagcal_hold.csv" "$base/pass2/tagcal_hold.csv" \
+        "$base/pass3/tagcal_hold.csv" "$base/grid/grid_hold.csv" --install
+    # (grid/static_transforms_refined.yaml do lượt grid tự sinh chỉ để tham khảo.)
+    new="$base/pass1/static_transforms_joint.yaml"
+    if [ ! -f "$new" ]; then
+      echo "❌ TF camera không qua kiểm tra chéo — KHÔNG cài static_transforms.yaml."
+      exit 1
+    fi
+    # static_trans_pub ghi đè file lúc THOÁT ⇒ chép khi T2 còn sống là mất.
+    while pgrep -f static_trans_pub >/dev/null; do
+      read -r -p "▶ Tắt T2 (Ctrl+C bên đó) rồi nhấn Enter để cài TF camera... " _
+    done
+    cp "$cfg/static_transforms.yaml" "$base/static_transforms_previous.yaml"
+    cp "$new" "$cfg/static_transforms.yaml"
+    echo "✅ ĐÃ CÀI: $cfg/ee_tag_offset.yaml + $cfg/static_transforms.yaml"
+    echo "   (bản cũ: $base/pass1/ee_tag_offset_previous.yaml, $base/static_transforms_previous.yaml)"
+    echo "   Tiếp: ./rx150.sh t2  →  ./read_tf_offset.sh (ee_tag vs rx150/ee_tag_link)  →  ./rx150.sh rack-calib"
+    ;;
   eetag-calib|eetagcalib)
     # HIỆU CHUẨN LẠI TF CAMERA — thay cho một lần Snap Pose của armtag.
     #   armtag:  MỘT tư thế  -> 6 ẩn giải từ 1 quan sát, lệch vài độ là thường
@@ -345,6 +408,39 @@ case "${1:-}" in
       exit 1
     fi
     exec python3 ./tools/plot_tube_run.py "$@"
+    ;;
+  ab-hac|ab-fuzzy)
+    # So sánh HAC vs Fuzzy trên CÙNG task (tools/ab_compare/README.md).
+    # Dùng launch *_control (không MoveIt, không camera): bớt tải CPU nhiễu nhịp,
+    # và không có gì khác gửi setpoint ngoài ab-run.
+    # HAC để trống gravity_model_file => Pinocchio + Gff, ĐÚNG đường fuzzy dùng.
+    # (t1-hac nạp model fitted — so với fuzzy như thế là so hai bộ bù trọng lực,
+    # không phải hai luật điều khiển.) Muốn cố ý khác thì thêm arg sau tên chế độ,
+    # vd './rx150.sh ab-hac gravity_model_file:=rx150_gravity_model.yaml' —
+    # ab-report sẽ in cảnh báo tham số khác nhau.
+    # Nhớ colcon build sau khi sửa gains YAML: node đọc bản trong install/.
+    ctrl="${1#ab-}"; shift
+    echo "⚠️  Tay máy sẽ BẬT TORQUE. Chỉ chạy MỘT trong ab-hac / ab-fuzzy tại một thời điểm."
+    exec ros2 launch "rx150_${ctrl}_controller" "${ctrl}_control.launch.py" "$@"
+    ;;
+  ab-run)
+    shift
+    exec python3 ./tools/ab_compare/ab_run.py "$@"
+    ;;
+  ab-report)
+    shift
+    if [ $# -eq 0 ]; then
+      echo "Dùng: ./rx150.sh ab-report tuning_runs/ab_<session>"
+      echo "Gần nhất:"; ls -dt tuning_runs/ab_*/ 2>/dev/null | head -5
+      exit 1
+    fi
+    exec python3 ./tools/ab_compare/ab_report.py "$@"
+    ;;
+  ab-bench)
+    # Biên dịch CHÍNH hac.c + fuzzy_type1.c trong src/ vào một khung đo, ghim lõi.
+    # Không đụng robot, không cần ROS đang chạy.
+    shift
+    exec python3 ./tools/ab_compare/bench_law.py "$@"
     ;;
   diag)
     shift

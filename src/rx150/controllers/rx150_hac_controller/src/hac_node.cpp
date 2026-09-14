@@ -48,6 +48,9 @@ HacNode::HacNode() : rclcpp::Node("hac_node") {
   error_limit_ = this->declare_parameter<std::vector<double>>("error_limit", std::vector<double>());
   error_dot_limit_ = this->declare_parameter<std::vector<double>>("error_dot_limit", std::vector<double>());
   u_max_ = this->declare_parameter<std::vector<double>>("u_max", std::vector<double>());
+  // Rỗng -> 1.0 mọi khớp (điền sau khi biết số khớp), để các YAML cũ chạy y như trước.
+  joint_gain_scale_ =
+      this->declare_parameter<std::vector<double>>("joint_gain_scale", std::vector<double>());
 
   reference_ =
       this->declare_parameter<std::vector<double>>("reference_pose", std::vector<double>());
@@ -126,6 +129,8 @@ HacNode::HacNode() : rclcpp::Node("hac_node") {
       "hac/gravity_torque", rclcpp::SensorDataQoS());
   pub_fric_ = this->create_publisher<sensor_msgs::msg::JointState>(
       "hac/friction", rclcpp::SensorDataQoS());
+  pub_timing_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+      "hac/timing", rclcpp::SensorDataQoS());
   pub_cmd_ = this->create_publisher<interbotix_xs_msgs::msg::JointGroupCommand>(
       "commands/joint_group", 10);
 
@@ -190,16 +195,26 @@ void HacNode::onRobotInfo(
   }
 
   const size_t n = joint_names_.size();
+  if (joint_gain_scale_.empty()) {
+    joint_gain_scale_.assign(n, 1.0);
+  }
   if (error_limit_.size() != n || error_dot_limit_.size() != n ||
       u_max_.size() != n || reference_.size() != n ||
-      friction_coulomb_.size() != n || friction_viscous_.size() != n) {
+      friction_coulomb_.size() != n || friction_viscous_.size() != n ||
+      joint_gain_scale_.size() != n) {
     RCLCPP_ERROR(
         this->get_logger(),
         "param size mismatch: joints=%zu, error_limit=%zu, error_dot_limit=%zu, u_max=%zu, "
-        "reference=%zu, friction_coulomb=%zu, friction_viscous=%zu",
+        "reference=%zu, friction_coulomb=%zu, friction_viscous=%zu, joint_gain_scale=%zu",
         n, error_limit_.size(), error_dot_limit_.size(), u_max_.size(), reference_.size(),
-        friction_coulomb_.size(), friction_viscous_.size());
+        friction_coulomb_.size(), friction_viscous_.size(), joint_gain_scale_.size());
     return;
+  }
+  for (double s : joint_gain_scale_) {
+    if (!std::isfinite(s) || s <= 0.0) {
+      RCLCPP_ERROR(this->get_logger(), "joint_gain_scale must be finite and positive");
+      return;
+    }
   }
   if (fitted_gravity_coeffs_.size() != 12) {
     RCLCPP_ERROR(
@@ -357,7 +372,8 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
     const bool is_joint_array = name == "error_limit" || name == "error_dot_limit" ||
                                name == "u_max" || name == "Gff" ||
                                name == "friction_coulomb" || name == "friction_viscous" ||
-                               name == "max_velocities" || name == "max_accelerations";
+                               name == "max_velocities" || name == "max_accelerations" ||
+                               name == "joint_gain_scale";
     const bool is_coeff_array = name == "fitted_gravity_coeffs";
     if (!is_joint_array && !is_coeff_array) {
       continue;
@@ -374,6 +390,13 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
       result.successful = false;
       result.reason = name + " size " + std::to_string(values.size()) + " != " +
                       std::to_string(expected);
+      break;
+    }
+    if (name == "joint_gain_scale" &&
+        std::any_of(values.begin(), values.end(),
+                    [](double s) { return !std::isfinite(s) || s <= 0.0; })) {
+      result.successful = false;
+      result.reason = "joint_gain_scale must be finite and positive";
       break;
     }
   }
@@ -412,10 +435,12 @@ rcl_interfaces::msg::SetParametersResult HacNode::onParamChange(
         name == "error_limit" || name == "error_dot_limit" || name == "u_max" ||
         name == "Gff" || name == "friction_coulomb" || name == "friction_viscous" ||
         name == "fitted_gravity_coeffs" || name == "max_velocities" ||
-        name == "max_accelerations") {
+        name == "max_accelerations" || name == "joint_gain_scale") {
       const std::vector<double> values = parameter.as_double_array();
       if (name == "error_limit") {
         error_limit_ = values;
+      } else if (name == "joint_gain_scale") {
+        joint_gain_scale_ = values;
       } else if (name == "error_dot_limit") {
         error_dot_limit_ = values;
       } else if (name == "u_max") {
@@ -508,6 +533,7 @@ void HacNode::onTimer() {
     return;
   }
   in_watchdog_ramp_ = false;
+  const auto tm_cyc0 = std::chrono::steady_clock::now();
 
   const size_t n = joint_names_.size();
   std::vector<float> command(n, 0.0f);
@@ -609,6 +635,7 @@ void HacNode::onTimer() {
     fitted_gravity_pwm = GravityCompensation::computeFitted(current_positions, fitted_gravity_coeffs_);
   }
 
+  const auto tm_law0 = std::chrono::steady_clock::now();
   for (size_t i = 0; i < n; ++i) {
     const size_t index = js_index_.at(joint_names_[i]);
     const double position = current_positions[i];
@@ -629,7 +656,8 @@ void HacNode::onTimer() {
         static_cast<float>(saturated_error),
         static_cast<float>(saturated_error_dot), static_cast<float>(a_),
         static_cast<float>(b_), static_cast<float>(c_));
-    double output = static_cast<double>(un);
+    // Mặt HAC (a/b/c) dùng chung; joint_gain_scale chỉnh độ khuếch đại riêng từng khớp.
+    double output = static_cast<double>(un) * joint_gain_scale_[i];
 
     double gravity_pwm = 0.0;
     if (enable_gravity_comp_) {
@@ -658,6 +686,7 @@ void HacNode::onTimer() {
     gravity_msg.effort[i] = gravity_pwm;
     friction_msg.effort[i] = friction_pwm;
   }
+  const auto tm_law1 = std::chrono::steady_clock::now();
 
   // Lưu trạng thái lệnh gần nhất phục vụ ramp khi watchdog trip
   last_cmd_pwm_ = command;
@@ -671,8 +700,28 @@ void HacNode::onTimer() {
   command_msg.cmd = command;
   pub_cmd_->publish(command_msg);
 
+  // Chi phí tính, so A/B với fuzzy_node (đo y hệt bên đó):
+  //   khối luật = vòng từng khớp ở trên (luật + bù trọng lực + ma sát + clamp)
+  //   chu kỳ    = sau watchdog -> publish lệnh (Ruckig + Pinocchio + luật + dựng
+  //               message), KHÔNG gồm publish debug bên dưới.
+  // hac/timing = [law_mean_ns, law_max_ns, cycle_mean_ns, cycle_max_ns, n_cycles]
+  const auto tm_cyc1 = std::chrono::steady_clock::now();
+  const double law_ns = std::chrono::duration<double, std::nano>(tm_law1 - tm_law0).count();
+  const double cyc_ns = std::chrono::duration<double, std::nano>(tm_cyc1 - tm_cyc0).count();
+  tm_law_sum_ns_ += law_ns;
+  tm_law_max_ns_ = std::max(tm_law_max_ns_, law_ns);
+  tm_cyc_sum_ns_ += cyc_ns;
+  tm_cyc_max_ns_ = std::max(tm_cyc_max_ns_, cyc_ns);
+  ++tm_n_;
+
   // Throttle các topic debug xuống debug_publish_rate (mặc định 50Hz)
   if (++dbg_cnt_ % dbg_div_ == 0) {
+    std_msgs::msg::Float64MultiArray timing_msg;
+    timing_msg.data = {tm_law_sum_ns_ / tm_n_, tm_law_max_ns_, tm_cyc_sum_ns_ / tm_n_,
+                       tm_cyc_max_ns_, static_cast<double>(tm_n_)};
+    pub_timing_->publish(timing_msg);
+    tm_law_sum_ns_ = tm_law_max_ns_ = tm_cyc_sum_ns_ = tm_cyc_max_ns_ = 0.0;
+    tm_n_ = 0;
     pub_ref_->publish(reference_msg);
     pub_err_->publish(error_msg);
     pub_edot_->publish(edot_msg);

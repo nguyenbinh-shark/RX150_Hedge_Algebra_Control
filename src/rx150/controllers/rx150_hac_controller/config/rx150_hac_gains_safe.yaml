@@ -8,7 +8,9 @@
 /rx150/hac_node:
   ros__parameters:
     group_name: "arm"
-    loop_rate: 100.0
+    # 400 Hz cho khớp update_rate của driver (rx150_motor.yaml). Giữ watchdog 0.2 s
+    # rộng hơn bản chính (0.05) vì các script ID có pha tính toán/nghỉ giữa các bước.
+    loop_rate: 400.0
     watchdog_timeout: 0.2
     reference_pose: [0.0, -1.80, 1.55, 0.8, 0.0]
     a: 0.3

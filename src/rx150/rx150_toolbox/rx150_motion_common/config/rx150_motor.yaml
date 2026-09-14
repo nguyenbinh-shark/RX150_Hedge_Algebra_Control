@@ -1,20 +1,60 @@
 port: /dev/ttyDXL
-# Baud host. GIỮ 1000000 cho tới khi P3 (lật EEPROM motor sang 4 Mbps) chạy xong
-# trên phần cứng thật. Đặt 4000000 khi motor còn ở 1 Mbps chỉ khiến ping trượt rồi
-# phải nhờ baudrate_autodetect gỡ — tức là chạy ở 1 Mbps nhưng log đầy cảnh báo.
-baudrate: 1000000
+# Baud host. P3 XONG trên phần cứng 2026-09-12: cả 6 motor đã ở 4 Mbps trong EEPROM
+# (dxl_baud.py --scan xác nhận). Bench 20k chu kỳ @4 Mbps, read full 12 byte:
+#   standard 0x82  p50 1.000 ms  p99 1.691 ms  max 2.897 ms  0 lỗi
+#   fast     0x8A  p50 1.000 ms  p99 1.104 ms  max 4.590 ms  0 lỗi
+# Cổng P3 (p99 < 2.5 ms, 0 lỗi/20000) ĐẠT. Trần bus lý thuyết ~990 Hz.
+# Nếu thay motor mới (mặc định 1 Mbps) thì phải chạy lại dxl_baud.py --set-baud 4000000.
+baudrate: 4000000
 baudrate_autodetect: true   # Lưới an toàn: dò lùi + log *** BAUD MISMATCH *** thay vì chết câm
-# Bật sau khi P5 probe thành công trên phần cứng (log 'SyncRead mode: FAST (0x8A)').
-fast_sync_read: false
+# P5 XONG 2026-09-12: log xác nhận 'SyncRead mode: FAST (0x8A) - probe succeeded.'
+# Soak 5 phút @400 Hz: 120014 reads, 0 failures, mode=FAST, fallbacks=0.
+fast_sync_read: true
 
 joint_order: [waist, shoulder, elbow, wrist_angle, wrist_rotate, gripper]
 sleep_positions: [0, -1.80, 1.55, 0.8, 0, 0]
 
 joint_state_publisher:
-  # Thang P4: 100 -> 200 -> 250 -> 333 -> 400 -> 500, mỗi bậc chạy 5 phút.
-  # Cổng mỗi bậc: Hz đo >= 0.95 x danh nghĩa, p99 chu kỳ < 1.5x, 0 dòng 'Failed syncRead'.
-  # Bậc trượt đầu tiên là trần bus — chốt ở đó, không ép lên 500.
-  update_rate: 100
+  # Thang P4 CHẠY XONG trên phần cứng 2026-09-12 (torque OFF, chỉ đo nhịp đọc).
+  # Sàng 20 s: 100/200/250/333/400 GO. 500 NO-GO khi mode=SLOW (p99 1.50x, sát cổng),
+  # GO khi bật fast_sync_read (p99 1.46x) — nên 500 Hz PHỤ THUỘC Fast Sync Read.
+  # Soak 5 phút mới là phép quyết định, và nó lật kết quả của bậc 500:
+  #   500 Hz  149979 mẫu  499.9 Hz  p99 2.978 ms (1.49x)  max 6.415 ms (3.21x)  39 gap >2x  -> NO-GO (cổng max < 3x)
+  #   400 Hz  120002 mẫu  400.0 Hz  p99 3.119 ms (1.25x)  max 5.323 ms (2.13x)   3 gap >2x  -> GO
+  # Cả hai bậc đều 0 'Failed syncRead' và 0 fallback => nút thắt KHÔNG phải bus.
+  #
+  # NGUYÊN NHÂN đã truy ra (2026-09-12, module_tests ngoài ROS): round-trip USB của
+  # U2D2. latency_timer của FTDI = 1 ms và ĐÃ LÀ MỨC NHỎ NHẤT ftdi_sio cho phép
+  # (/sys/bus/usb-serial/devices/ttyUSB0/latency_timer, chỉ root ghi được).
+  #   - đọc CHẠY TỰ DO, back-to-back : RTT p50 1.000 ms  p99 1.154 ms
+  #   - đọc BỊ NHỊP (bất kỳ chu kỳ nào): RTT p50 ~1.40 ms  p99 ~1.85 ms
+  #   Con số khi bị nhịp GIỐNG NHAU ở 2.0/2.1/2.5/1.5/3.0 ms => không phải lệch pha
+  #   theo chu kỳ, mà cứ có khoảng nghỉ giữa hai giao dịch là trả thêm một phần cửa
+  #   sổ latency. Ghi (sync write, không có gói trả về) thì rẻ: p99 0.22 ms.
+  #   => ngân sách thật mỗi chu kỳ = 1.85 + 0.22 = 2.07 ms  ->  trần ~483 Hz, TRƯỚC
+  #      khi tính publish + DDS. 500 Hz (2.00 ms) không đủ chỗ; 400 Hz (2.50 ms) dư 0.43 ms.
+  #
+  # ĐÃ LOẠI TRỪ, đừng mất công lại:
+  #   - CPU governor / C-state: vòng busy-wait (không hề ngủ) cho RTT y hệt vòng ngủ;
+  #     trễ đánh thức max chỉ 1.17 ms. intel_pstate 'powersave' vẫn chạy 4.8 GHz.
+  #   - Kích thước payload / số motor: cắt 12B->4B hay bỏ gripper KHÔNG đổi p50, và
+  #     đối chứng lặp lại cho thấy chênh lệch giữa các LẦN CHẠY lớn hơn giữa các CẤU HÌNH.
+  #   - DDS: publisher/subscriber 500 Hz không phần cứng chỉ cho 2 outlier >4 ms / 60000.
+  #   - Tách luồng (đọc free-run + vòng 500 Hz): đọc-không thì đẹp (tuổi p99 1.04 ms),
+  #     nhưng xen lệnh ghi vào là nhịp free-run vỡ (999 -> 344 Hz, RTT p50 2.88 ms),
+  #     tuổi dữ liệu p99 3.88 ms và chỉ 65% lệnh kịp phát. TỆ HƠN 400 Hz hiện tại.
+  #
+  # Muốn vượt 400 Hz thì phải đổi GIAO DIỆN (bỏ USB-serial FTDI khỏi vòng kín),
+  # không phải chỉnh host. Theo luật "bậc trượt đầu tiên là trần": chốt 400.
+  #
+  # BIÊN CÒN LẠI Ở 400 Hz (đo lại 2026-09-12, driver trần trụi torque OFF, 300 s):
+  #   p99 3.133 ms (1.25x, cổng 1.5x -> RỘNG)   max 6.929 ms (2.77x, cổng 3x -> SÁT)
+  # Tức hai cổng KHÔNG cùng độ chặt: cổng p99 còn thoải mái, còn cổng max gần như hết
+  # biên ngay từ tầng driver. Bộ điều khiển nào cộng thêm ~0.6 ms vào đuôi là trượt —
+  # rx150_ff_controller đã trượt đúng như vậy (2/2 lần, xem rx150_ff_gains.yaml).
+  # Khi đọc kết quả P6 của một bộ mới, so với ĐỐI CHỨNG driver-trần-trụi CÙNG BUỔI,
+  # đừng so với con số ghi trong file này của buổi khác.
+  update_rate: 400
   publish_states: true
   topic_name: joint_states
 

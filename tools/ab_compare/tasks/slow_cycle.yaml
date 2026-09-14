@@ -1,0 +1,22 @@
+# slow_cycle — cùng chuỗi pose với pick_cycle nhưng đi CHẬM.
+# Mỗi waypoint có 'move' (giây): ab_run.py rải setpoint nội suy quintic 100 Hz
+# thay vì gửi một bậc cho Ruckig ⇒ vận tốc đỉnh khớp ≈ 0.25 rad/s
+# (v_max = 1.875·Δq/move), gia tốc rất nhỏ. Quán tính gần như không đáng kể,
+# nên sai số bám phản ánh chủ yếu ma sát + sai lệch bù trọng lực + độ cứng luật
+# ở vùng e nhỏ — đúng chỗ HAC và Fuzzy khác nhau về hình dạng mặt điều khiển.
+#
+# 'hold' tính TỪ đầu segment, gồm cả 'move' — phần còn lại (≥ 2 s) để đo xác lập.
+# Quy ước còn lại: xem pick_cycle.yaml.
+name: slow_cycle
+start: [0.0, -1.80, 1.55, 0.80, 0.0]
+start_hold: 2.0
+waypoints:
+  - {label: home,     q: [0.0,  0.00, 0.00, 0.00, 0.0], move: 13.5, hold: 16.0}
+  - {label: above_L,  q: [0.7,  0.00, 0.00, 0.90, 0.0], move: 7.0,  hold: 9.5}
+  - {label: down_L,   q: [0.7,  0.35, 0.05, 0.90, 0.0], move: 3.0,  hold: 5.5}
+  - {label: up_L,     q: [0.7,  0.00, 0.00, 0.90, 0.0], move: 3.0,  hold: 5.5}
+  - {label: above_R,  q: [-0.7, 0.00, 0.00, 0.90, 0.0], move: 10.5, hold: 13.0}
+  - {label: down_R,   q: [-0.7, 0.35, 0.05, 0.90, 0.0], move: 3.0,  hold: 5.5}
+  - {label: up_R,     q: [-0.7, 0.00, 0.00, 0.90, 0.0], move: 3.0,  hold: 5.5}
+  - {label: home2,    q: [0.0,  0.00, 0.00, 0.00, 0.0], move: 7.0,  hold: 9.5}
+  - {label: sleep,    q: [0.0, -1.80, 1.55, 0.80, 0.0], move: 13.5, hold: 16.0}

@@ -2,19 +2,55 @@
 /rx150/hac_node:
   ros__parameters:
     group_name: "arm"
-    loop_rate: 100.0          # Bám update_rate trong rx150_motor.yaml. Nâng theo thang P6
-                              # (100->200->333->trần đo được ở P4/P5), KHÔNG đặt sẵn 500.
+    # P6 CHẠY XONG trên phần cứng 2026-09-12, soak 5 phút @400 Hz (torque ON, giữ
+    # reference_pose, bù trọng lực fitted). Bám update_rate = 400 trong rx150_motor.yaml.
+    #   119989 joint_states / 119995 commands  -> 1:1, KHÔNG rớt chu kỳ
+    #   chu kỳ  p50 2.505 ms  p99 3.106 ms (1.24x)  max 6.867 ms (2.75x)  5 gap >2x
+    #   trễ read->command THẬT (header.stamp): p50 0.890 ms  p99 1.454 ms  max 6.642 ms
+    #   0 watchdog trip, 0 Failed syncRead, 0 fallback, mode=FAST
+    # KHÔNG nâng lên 500: bậc đó trượt ngay ở tầng đọc (P4 soak, max 3.21x > cổng 3x)
+    # dù bus còn rảnh — xem khối comment ở rx150_motor.yaml.
+    loop_rate: 400.0
     watchdog_timeout: 0.05    # Giảm từ 0.2s xuống 50ms cho chu kỳ điều khiển nhanh
     debug_publish_rate: 50.0  # Tần số throttle cho topic debug (50 Hz), pub_cmd vẫn full-rate
     velocity_filter_tau: 0.006 # Hằng số thời gian lọc thông thấp vận tốc (6ms)
     reference_pose: [0.0, -1.80, 1.55, 0.8, 0.0]   # 5 khớp arm [waist,shoulder,elbow,wrist_angle,wrist_rotate] (rad); [] -> lấy sleep_positions
     # HAC surface coefficients (scalar, live-tunable via ROS parameters).
-    a: 0.3
-    b: 12.0
+    # Luật tuyến tính: Kp = 2c/3a, Kd = c/3b — CÙNG cho mọi khớp.
+    # TUNE 2026-09-14 trên phần cứng (ab_compare slow_cycle + pick_cycle, Pinocchio gravity):
+    #   a    b   Kp    Kd    RMSE slow  xác lập  TV PWM  ghi chú
+    #   0.30 8   2667  50    1.43°      1.71°    51      shoulder lệch ~3° khi hold (quá mềm)
+    #   0.20 8   4000  50    0.92°      1.06°    72
+    #   0.15 6   5333  66.7  0.68°      0.76°    96      <- CHỌN (tạm, xem dưới)
+    #   0.12 6   6667  66.7  0.57°      0.66°    121     WAIST DAO ĐỘNG TĂNG DẦN — loại
+    #   0.12 8   6667  50    0.60°      0.65°    179     waist dao động — loại
+    #   (các dòng trên: 1 lượt/bộ, tuning_runs/ab_hactune_*)
+    # a=0.12 b=6 chạy 3 lượt (tuning_runs/ab_slow2): RMSE 0.59° nhưng waist dao động phân
+    #   kỳ ±1.5°, PWM ±200, cả 3 lượt (p-p PWM thông cao 336-481; Fuzzy ~48, a=0.3 ~55,
+    #   a=0.2 64, a=0.15 113). RMSE/xác lập KHÔNG bắt được lỗi này — phải nhìn đồ thị.
+    # Giới hạn cấu trúc: a/b/c vô hướng ⇒ waist (XL430, quán tính nhỏ) chặn Kp chung ở
+    #   ~5000, trong khi shoulder/elbow còn chịu được cứng hơn. Fuzzy thì có Ku riêng từng khớp.
+    # Fuzzy quanh gốc ≈ Ku·Ke·0.887: waist 2220, shoulder/elbow 5320, wrist_angle 3550.
+    a: 0.15
+    b: 6.0
     c: 1200.0
+    # Hệ số khuếch đại riêng từng khớp, nhân vào đầu ra mặt HAC (live-tunable).
+    # Kp_i = joint_gain_scale[i]·2c/3a, Kd_i = joint_gain_scale[i]·c/3b. Rỗng -> 1.0.
+    # TUNE 2026-09-14 (a=0.15 b=6 c=1200, slow_cycle 1 lượt, tuning_runs/ab_hactune_E|F):
+    #   scale [w, s, e, wa, wr]        RMSE   xác lập  dao động p-p PWM (w/s/e/wa)
+    #   [1, 1, 1, 1, 1]           (B)  0.68°  0.76°    113 / 98 / 74 / 100
+    #   [0.75, 1.25, 1.25, 0.9, 1] (E) 0.63°  0.72°     81 / 121 / 89 / 90   <- CHỌN
+    #   [0.75, 1.5, 1.5, 0.9, 1]   (F) 0.57°  0.67°     85 / 196 / 123 / 117  shoulder sát ngưỡng
+    # (dao động = max cửa sổ 2 s của p-p PWM thông cao; ≥ ~250 là limit cycle thật, xem ab_slow2)
+    # Xác nhận E, 3 lượt slow_cycle (tuning_runs/ab_slow3), Fuzzy cùng ref (ab_slow1):
+    #   RMSE 0.63 ± 0.01° (Fuzzy 0.97°), xác lập 0.73° (1.08°), TV PWM 102 (77),
+    #   dao động waist 72-91 / shoulder 117-120 / elbow 74-97 / wrist 94-103 — không limit cycle.
+    # pick_cycle nhanh (ab_hactune_E_fast): vọt lố ≤ 2%, settle < 1 s; dao động lúc hold
+    #   waist 104 (C vô hướng a=0.12: 304). Đổi lại waist trễ hơn khi chạy nhanh (max_e 5.8° vs 3.6°).
+    joint_gain_scale: [0.75, 1.25, 1.25, 0.9, 1.0]
     # --- Saturation Limits (Direct Saturation, NOT Normalization) ---
     # Giới hạn trực tiếp error và error_dot (tương đương ngưỡng 1.0 của bộ Fuzzy)
-    error_limit: [0.5, 0.333, 0.333, 0.2, 0.5]         # = 1 / Ke của Fuzzy
+    error_limit: [0.25, 0.333, 0.333, 0.2, 0.5]         # = 1 / Ke của Fuzzy
     error_dot_limit: [3.14, 3.14, 3.14, 3.14, 3.14]  # = 1 / Ked của Fuzzy
     # u_max là ngưỡng bão hòa an toàn (hardware cap ≤ ±885) đồng thời là gain điều khiển.
     u_max: [600.0, 600.0, 600.0, 600.0, 600.0]

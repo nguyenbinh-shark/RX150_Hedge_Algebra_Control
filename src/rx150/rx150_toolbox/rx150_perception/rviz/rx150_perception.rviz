@@ -4,15 +4,21 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /Status1
         - /TF1
         - /FilteredPointCloud1
+        - /FilteredPointCloud1/Topic1
         - /ColorImage1
         - /MarkerArray1
+        - /RackOverlay1
+        - /Axes1
+        - /Axes2
       Splitter Ratio: 0.5
     Tree Height: 176
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
+      - /Orbit1
     Name: Views
     Splitter Ratio: 0.5076586604118347
 Visualization Manager:
@@ -134,91 +140,19 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
     - Class: rviz_default_plugins/TF
-      Enabled: true
+      Enabled: false
       Frame Timeout: 15
       Frames:
         All Enabled: true
-        camera_color_frame:
-          Value: true
-        camera_color_optical_frame:
-          Value: true
-        camera_depth_frame:
-          Value: true
-        camera_depth_optical_frame:
-          Value: true
-        camera_link:
-          Value: true
-        rack_tag:
-          Value: true
-        rx150/ar_tag_link:
-          Value: true
-        rx150/base_link:
-          Value: true
-        rx150/ee_arm_link:
-          Value: true
-        rx150/ee_gripper_link:
-          Value: true
-        rx150/ee_tag_link:
-          Value: true
-        rx150/fingers_link:
-          Value: true
-        rx150/forearm_link:
-          Value: true
-        rx150/gripper_bar_link:
-          Value: true
-        rx150/gripper_link:
-          Value: true
-        rx150/gripper_prop_link:
-          Value: true
-        rx150/left_finger_link:
-          Value: true
-        rx150/right_finger_link:
-          Value: true
-        rx150/shoulder_link:
-          Value: true
-        rx150/upper_arm_link:
-          Value: true
-        rx150/wrist_link:
-          Value: true
-        world:
-          Value: true
       Marker Scale: 0.20000000298023224
       Name: TF
       Show Arrows: true
       Show Axes: true
       Show Names: false
       Tree:
-        camera_link:
-          camera_color_frame:
-            camera_color_optical_frame:
-              rack_tag:
-                {}
-              world:
-                rx150/base_link:
-                  rx150/shoulder_link:
-                    rx150/upper_arm_link:
-                      rx150/forearm_link:
-                        rx150/wrist_link:
-                          rx150/gripper_link:
-                            rx150/ee_arm_link:
-                              rx150/ar_tag_link:
-                                {}
-                              rx150/gripper_bar_link:
-                                rx150/fingers_link:
-                                  rx150/ee_gripper_link:
-                                    rx150/ee_tag_link:
-                                      {}
-                                  rx150/left_finger_link:
-                                    {}
-                                  rx150/right_finger_link:
-                                    {}
-                              rx150/gripper_prop_link:
-                                {}
-          camera_depth_frame:
-            camera_depth_optical_frame:
-              {}
+        {}
       Update Interval: 0
-      Value: true
+      Value: false
     - Alpha: 1
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -274,7 +208,7 @@ Visualization Manager:
       Name: FilteredPointCloud
       Position Transformer: XYZ
       Selectable: true
-      Size (Pixels): 3
+      Size (Pixels): 5
       Size (m): 0.009999999776482582
       Style: Points
       Topic:
@@ -283,7 +217,7 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /pc_filter/pointcloud/filtered
+        Value: /camera/camera/depth/color/points
       Use Fixed Frame: true
       Use rainbow: true
       Value: true
@@ -317,7 +251,10 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        {}
+        tube_labels: true
+        tube_orientation: true
+        workspace_roi: true
+        workspace_roi_edges: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -334,11 +271,6 @@ Visualization Manager:
         live/labels: true
         live/outline: true
         live/tag: true
-        saved/axis: true
-        saved/holes: true
-        saved/labels: true
-        saved/outline: true
-        saved/tag: true
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -358,7 +290,21 @@ Visualization Manager:
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /rack_calib/image_debug
+        Value: /yolo/image_debug
+      Value: true
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 0.20000000298023224
+      Name: Axes
+      Radius: 0.009999999776482582
+      Reference Frame: rx150/ar_tag_link
+      Value: true
+    - Class: rviz_default_plugins/Axes
+      Enabled: true
+      Length: 0.10000000149011612
+      Name: Axes
+      Radius: 0.009999999776482582
+      Reference Frame: ee_tag
       Value: true
   Enabled: true
   Global Options:
@@ -374,7 +320,7 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 2
+      Distance: 1
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
@@ -389,13 +335,13 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1
+      Pitch: 1.5
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: -0.5
+      Yaw: 1.2999999523162842
     Saved:
       - Class: rviz_default_plugins/Orbit
-        Distance: 2
+        Distance: 1
         Enable Stereo Rendering:
           Stereo Eye Separation: 0.05999999865889549
           Stereo Focal Distance: 1
@@ -406,7 +352,7 @@ Visualization Manager:
           Y: 0
           Z: 0
         Focal Shape Fixed Size: false
-        Focal Shape Size: 0.05000000074505806
+        Focal Shape Size: 1
         Invert Z Axis: false
         Name: Orbit
         Near Clip Distance: 0.009999999776482582
@@ -422,7 +368,7 @@ Window Geometry:
   Height: 1376
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001cb00000506fc0200000004fb000000140043006f006c006f00720049006d006100670065010000003d0000019f0000002800fffffffb000000100044006900730070006c00610079007301000001e200000133000000c900fffffffb0000000a00560069006500770073010000031b000000a4000000a400fffffffb00000016005200610063006b004f007600650072006c0061007901000003c50000017e0000002800ffffff000007e90000050600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000100000000000001cb00000506fc0200000004fb000000140043006f006c006f00720049006d006100670065010000003d0000019f0000002800fffffffb000000100044006900730070006c00610079007301000001e200000133000000c900fffffffb0000000a00560069006500770073010000031b00000159000000a400fffffffb00000016005200610063006b004f007600650072006c00610079010000047a000000c90000002800ffffff000007e90000050600000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   RackOverlay:
     collapsed: false
   Views:

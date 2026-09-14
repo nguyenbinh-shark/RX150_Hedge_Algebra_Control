@@ -1377,6 +1377,7 @@ def install_tag_offset(new_file, out_dir, verdict=""):
     import shutil
     if "CHƯA ĐỦ" in (verdict or ""):
         print("\n  ⚠ KHÔNG cài: kiểm tra chéo nói dữ liệu chưa đủ. Đo thêm pose rồi hãy cài.")
+        return None
     ws = os.environ.get(
         "RX150_WS",
         os.path.expanduser("~/RX150_Hedge_Algebra_Control"
@@ -1518,7 +1519,14 @@ def tag_offset(rows, args, out_dir=None):
         cv.append({"pos_mm": float(1000 * np.sqrt(
             (np.linalg.norm(np.array(d), axis=1) ** 2).mean())),
             "t_X_mm": (1000 * f["t_X"]).tolist()})
+        cv[-1]["R_bc"], cv[-1]["t_bc"] = f["R_bc"], f["t_bc"]
     cv_gap = float(np.linalg.norm(np.array(cv[0]["t_X_mm"]) - np.array(cv[1]["t_X_mm"])))
+    # Cùng phép chia đó cho EXTRINSIC: hai nửa phải ra cùng một camera.
+    cam_gap_deg = math.degrees(np.linalg.norm(
+        Rot.from_matrix(cv[0]["R_bc"].T @ cv[1]["R_bc"]).as_rotvec()))
+    cam_gap_mm = float(1000 * np.linalg.norm(cv[0]["t_bc"] - cv[1]["t_bc"]))
+    for c in cv:
+        del c["R_bc"], c["t_bc"]
 
     # X kiểu cũ (analyze): extrinsic coi như đúng. Để so.
     RX0, tX0 = fit["X0"]
@@ -1551,6 +1559,21 @@ def tag_offset(rows, args, out_dir=None):
         verdict = (f"hai nửa lệch {cv_gap:.1f} mm, sai số {worst:.1f} mm — ĐÁNG TIN")
     print(f"    {verdict}")
 
+    # EXTRINSIC CAMERA của cùng nghiệm đó — X và camera ra từ MỘT bài toán nên
+    # frame ee_tag (camera thấy) và rx150/ee_tag_link (URDF + X) trùng nhau theo
+    # đúng nghĩa bình phương tối thiểu, không phải hai phép đo chồng lên nhau.
+    R_bc, t_bc = fit["R_bc"], fit["t_bc"]
+    R_cur, t_cur = _kabsch(np.array([g["p_raw"] for g in gs]),
+                           np.array([g["p_cam"] for g in gs]))
+    cam_rot = math.degrees(np.linalg.norm(Rot.from_matrix(R_cur.T @ R_bc).as_rotvec()))
+    cam_ok = "CHƯA ĐỦ" not in verdict and cam_gap_deg < 1.0 and cam_gap_mm < 6.0
+    cam_verdict = (f"hai nửa lệch {cam_gap_deg:.2f}° / {cam_gap_mm:.1f} mm — "
+                   + ("ĐÁNG TIN" if cam_ok else "CHƯA ĐỦ, đừng cài"))
+    print(f"\n  EXTRINSIC CAMERA (giải cùng lúc với X):")
+    print(f"    so với TF đang dùng: xoay {cam_rot:.2f}°, tịnh tiến "
+          f"({', '.join(f'{v:+.1f}' for v in 1000*(t_bc-t_cur))}) mm")
+    print(f"    kiểm tra chéo: {cam_verdict}")
+
     res = {"t_X_mm": (1000 * t_X).tolist(), "quat_X_xyzw": q_X.tolist(),
            "rpy_X_deg": rpy.tolist(),
            "sigma_cov_mm": sigma.tolist(), "sigma_jackknife_mm": (1000 * jk_std).tolist(),
@@ -1558,6 +1581,8 @@ def tag_offset(rows, args, out_dir=None):
            "resid_pos_mm": fit["pos_mm"], "resid_rot_deg": fit["rot_deg"],
            "t_X_naive_mm": (1000 * tX0).tolist(),
            "cross_validation": cv, "cv_gap_mm": cv_gap, "verdict": verdict,
+           "cam_rot_vs_current_deg": cam_rot, "cam_cv_gap_deg": cam_gap_deg,
+           "cam_cv_gap_mm": cam_gap_mm, "cam_verdict": cam_verdict,
            "n_poses": len(gs), "n_samples": len(use),
            "poses": [g["label"] for g in gs]}
 
@@ -1589,6 +1614,21 @@ def tag_offset(rows, args, out_dir=None):
             yaml.safe_dump(entry, fh, sort_keys=True, default_flow_style=False,
                            allow_unicode=True)
         print(f"\n  Offset đã ghi: {path}")
+
+        # static_transforms (camera_color_optical_frame -> world), cùng quy ước
+        # với refine(): coi ref_frame ≡ world (identity trên rx150). Tên file
+        # khác khi chưa đạt để 'rx150.sh onecal' không thể cài nhầm.
+        T_cam_ref = T_inv(make_T(t_bc, R_to_quat(R_bc)))
+        q = R_to_quat(T_cam_ref[:3, :3])
+        cam_entry = {"frame_id": "camera_color_optical_frame", "child_frame_id": "world",
+                     "x": float(T_cam_ref[0, 3]), "y": float(T_cam_ref[1, 3]),
+                     "z": float(T_cam_ref[2, 3]), "qx": float(q[0]), "qy": float(q[1]),
+                     "qz": float(q[2]), "qw": float(q[3])}
+        cam_path = os.path.join(out_dir, "static_transforms_joint.yaml"
+                                if cam_ok else "static_transforms_joint_REJECTED.yaml")
+        with open(cam_path, "w") as fh:
+            yaml.safe_dump([cam_entry], fh, sort_keys=True)
+        print(f"  TF camera đã ghi: {cam_path}")
         if getattr(args, "install", False):
             install_tag_offset(path, out_dir, verdict)
         else:

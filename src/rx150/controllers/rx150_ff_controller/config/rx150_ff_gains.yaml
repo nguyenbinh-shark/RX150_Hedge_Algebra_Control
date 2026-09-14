@@ -3,8 +3,28 @@
 /rx150/ff_node:
   ros__parameters:
     group_name: "arm"
-    loop_rate: 100.0          # Bám update_rate trong rx150_motor.yaml. Nâng theo thang P6
-                              # (100->200->333->trần đo được ở P4/P5), KHÔNG đặt sẵn 500.
+    # 400 Hz — khớp update_rate trong rx150_motor.yaml để A/B với HAC hợp lệ
+    # (README: "mọi thứ còn lại giữ nguyên, cùng chu kỳ").
+    # Tầng đọc đã qua P4 soak 5 phút @400 Hz: p99 3.119 ms (1.25x), max 5.323 ms
+    # (2.13x), 3 gap, 0 Failed syncRead. HAC đã qua P6 @400 Hz cùng ngày.
+    # P6 CHẠY XONG trên phần cứng 2026-09-12 (torque ON, giữ reference_pose).
+    # ⚠️  TRƯỢT CỔNG max < 3x, LẶP LẠI 2/2 LẦN — bộ duy nhất trong ba bộ bị:
+    #   lần 1  120011 js / 120010 cmd  p99 3.112 ms (1.24x)  max 7.519 ms (3.01x)  11 gap
+    #   lần 2  cùng điều kiện          p99 3.110 ms (1.24x)  max 8.803 ms (3.52x)   4 gap
+    # ĐỐI CHỨNG chạy NGAY SAU đó, cùng máy cùng buổi (nên không phải máy xấu đi):
+    #   fuzzy  max 6.503 / 6.521 ms (2.60x)  -> GO
+    #   HAC    max 6.867 ms (2.75x)          -> GO
+    #   driver TRẦN TRỤI, torque OFF, không controller: max 6.929 ms (2.77x) -> GO
+    # Đọc số: đuôi của RIÊNG driver đã là 2.77x, tức cổng max gần như KHÔNG còn biên ở
+    # 400 Hz; ff cộng thêm ~0.6-1.9 ms nữa là vượt. Không phải do tính toán — ff RẺ HƠN
+    # fuzzy (không có Pinocchio RNEA). Khác biệt thật: ff KHÔNG bù trọng lực và Ked gần
+    # như bằng 0, nên tay máy droop và PD ghì liên tục ở PWM khác 0 suốt 5 phút.
+    # CHƯA truy ra cơ chế nối droop -> đuôi nhịp đọc; đừng ghi kết luận nhân quả vào đây.
+    # Hệ quả điều khiển: outlier 8.8 ms = 3.5 chu kỳ, còn watchdog_timeout 50 ms — xa gấp
+    # ~6 lần, nên KHÔNG nguy hiểm. Nhưng theo luật repo thì bậc này CHƯA qua cổng.
+    # KHÔNG đặt 500: trần đo được của round-trip U2D2/FTDI là ~483 Hz, xem khối
+    # comment nguyên nhân trong rx150_motor.yaml.
+    loop_rate: 400.0
     watchdog_timeout: 0.05    # Giảm từ 0.2s xuống 50ms cho chu kỳ điều khiển nhanh
     debug_publish_rate: 50.0  # Tần số throttle cho topic debug (50 Hz), pub_cmd vẫn full-rate
     velocity_filter_tau: 0.006 # Hằng số thời gian lọc thông thấp vận tốc (6ms)

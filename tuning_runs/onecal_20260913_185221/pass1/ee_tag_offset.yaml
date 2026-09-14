@@ -1,0 +1,28 @@
+# ee_tag_offset.yaml — OFFSET GẮN TAG trên tay gắp, đo bằng
+# rx150_ee_tag_bench.py tagoffset (giải đồng thời với extrinsic camera).
+#
+# SINH TỰ ĐỘNG — đừng sửa tay. Dán lại tag => phải đo lại.
+# Dùng: eetag-hold/watch --tag-offset <file này> để analyze cho ra
+# sai lệch TUYỆT ĐỐI thay vì chỉ độ không nhất quán giữa các pose.
+
+child_frame: ee_tag
+measurement:
+  calibrated_at: '2026-09-13T20:37:40'
+  poses: 99
+  resid_pos_mm: 0.56
+  resid_rot_deg: 0.1
+  samples: 48500
+  sigma_mm:
+  - 61.17
+  - 290.12
+  - 489.35
+  verdict: hai nửa lệch 885.3 mm — DỮ LIỆU CHƯA ĐỦ, đừng dùng số này
+parent_frame: rx150/ee_gripper_link
+qw: 0.6947181385427732
+qx: 0.07441416430186204
+qy: -0.15400927723249327
+qz: -0.6986489695528397
+tag_id: 1
+x: -0.02136973672022817
+y: 0.2185853763116381
+z: 0.1652767919144177

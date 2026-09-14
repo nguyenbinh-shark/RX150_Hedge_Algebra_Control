@@ -1,0 +1,18 @@
+# joint_steps — bậc thang TỪNG KHỚP quanh home, hai chiều.
+# Dùng khi cần rise / overshoot / settling sạch cho từng khớp (không bị khớp
+# khác kéo). Chạy sau pick_cycle nếu muốn soi riêng khớp nào kém.
+# Quy ước file: xem pick_cycle.yaml.
+name: joint_steps
+start: [0.0, 0.0, 0.0, 0.0, 0.0]
+start_hold: 3.0
+waypoints:
+  - {label: waist+,        q: [0.4,  0.0,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: waist0,        q: [0.0,  0.0,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: shoulder+,     q: [0.0,  0.3,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: shoulder0,     q: [0.0,  0.0,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: elbow-,        q: [0.0,  0.0, -0.3,  0.0,  0.0], hold: 2.5}
+  - {label: elbow0,        q: [0.0,  0.0,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: wrist_angle+,  q: [0.0,  0.0,  0.0,  0.4,  0.0], hold: 2.5}
+  - {label: wrist_angle0,  q: [0.0,  0.0,  0.0,  0.0,  0.0], hold: 2.5}
+  - {label: wrist_rotate+, q: [0.0,  0.0,  0.0,  0.0,  0.5], hold: 2.5}
+  - {label: wrist_rotate0, q: [0.0,  0.0,  0.0,  0.0,  0.0], hold: 2.5}

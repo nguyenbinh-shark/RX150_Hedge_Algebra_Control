@@ -1,9 +1,20 @@
-# V1: 100 Hz an toàn (không patch vendor). Key PHẢI khớp tên node fully-qualified.
+# V1 @400 Hz (4 Mbps + Fast Sync Read, đã patch vendor). Key PHẢI khớp tên node fully-qualified.
 /rx150/fuzzy_node:
   ros__parameters:
     group_name: "arm"
-    loop_rate: 100.0          # Bám update_rate trong rx150_motor.yaml. Nâng theo thang P6
-                              # (100->200->333->trần đo được ở P4/P5), KHÔNG đặt sẵn 500.
+    # 400 Hz — khớp update_rate trong rx150_motor.yaml để A/B với HAC hợp lệ
+    # (README: "mọi thứ còn lại giữ nguyên, cùng chu kỳ").
+    # Tầng đọc đã qua P4 soak 5 phút @400 Hz: p99 3.119 ms (1.25x), max 5.323 ms
+    # (2.13x), 3 gap, 0 Failed syncRead. HAC đã qua P6 @400 Hz cùng ngày.
+    # P6 CHẠY XONG trên phần cứng 2026-09-12 (torque ON, giữ reference_pose). GO, 2/2 lần:
+    #   lần 1  120008 js / 120008 cmd (1:1)  p99 3.108 ms (1.24x)  max 6.503 ms (2.60x)  5 gap
+    #   lần 2  cùng điều kiện               p99 3.108 ms (1.24x)  max 6.521 ms (2.61x)  5 gap
+    #   trễ read->command THẬT: p50 0.965 / p99 1.527 / max 6.348 ms (lần 1)
+    #   0 watchdog trip, 0 Failed syncRead, 0 fallback, mode=FAST, shutdown 'zero + torque off' sạch
+    # => A/B với HAC (p99 3.106, max 6.867) lại hợp lệ: cùng 400 Hz, cùng chất lượng nhịp.
+    # KHÔNG đặt 500: trần đo được của round-trip U2D2/FTDI là ~483 Hz, xem khối
+    # comment nguyên nhân trong rx150_motor.yaml.
+    loop_rate: 400.0
     watchdog_timeout: 0.05    # Giảm từ 0.2s xuống 50ms cho chu kỳ điều khiển nhanh
     debug_publish_rate: 50.0  # Tần số throttle cho topic debug (50 Hz), pub_cmd vẫn full-rate
     velocity_filter_tau: 0.006 # Hằng số thời gian lọc thông thấp vận tốc (6ms)
@@ -47,7 +58,17 @@
     #   3.78° ở elbow ⇒ vượt verify_tolerance_rad (3.44°) của tầng task, 'về home' báo
     #   thất bại. Nhân 2.5 đưa sai số lớn nhất về 1.49°; mức phẳng 3000 được 1.40°
     #   — phần dư còn lại là ma sát/rơ, không phải thiếu gain.
-    Ku: [2000.0, 1333.33, 1333.33, 800.0, 2000.0]
+    # 2026-09-14: shoulder/elbow trả về 2000 (mức trước tune 09-12). Với 1333 shoulder
+    # dừng thiếu 4.6-5.0° ở PRE-GRASP của tubes (> verify_tolerance 3.44°) ⇒ APPROACH
+    # báo lỗi, không bao giờ DESCEND. Bộ fuzzy không có khâu I nên phải giữ độ cứng.
+    # 2026-09-14: waist 2000 -> 1250. Step ±0.2 rad, 2 tư thế (HOME thu gọn + vươn
+    # waist 60° r=0.30 z=0.20), 8 lần/bộ. Ku 2000 để lại limit cycle ±3 tick (0.44°)
+    # @3.2 Hz ở đích, overshoot 10-24%. Ku 1250: 0/8 lần rung, overshoot 0-10%.
+    # Tăng Ked KHÔNG giúp (0.05 -> rung 1.7-2.3°: encoder 0.088°/tick làm D khuếch
+    # đại nhiễu lượng tử); giảm Ked 0.0125 ở Ku 2000 thì rung 4/4.
+    # Giới hạn còn lại KHÔNG sửa được bằng gain: ma sát tĩnh waist ~35-45 PWM ⇒
+    # kẹt 0.7-0.85° khi quay chiều + ở tư thế vươn (Ku 2000: 0.73°, 1250: 0.85°).
+    Ku: [1250.0, 2000.0, 2000.0, 800.0, 2000.0]
     # u_max nay CHỈ là ngưỡng bão hòa an toàn (hardware cap ≤ ±885), KHÔNG còn là gain điều khiển.
     u_max: [600.0, 600.0, 600.0, 600.0, 600.0]
     # --- Gravity Compensation (Pinocchio RNEA) ---

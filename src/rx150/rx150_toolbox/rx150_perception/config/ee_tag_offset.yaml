@@ -7,22 +7,23 @@
 
 child_frame: ee_tag
 measurement:
-  calibrated_at: '2026-09-11T12:02:48'
-  poses: 56
-  resid_pos_mm: 4.29
-  resid_rot_deg: 0.97
-  samples: 3409
+  calibrated_at: '2026-09-13T20:45:00'
+  poses: 60
+  resid_pos_mm: 0.35
+  resid_rot_deg: 0.15
+  samples: 29500
   sigma_mm:
-  - 0.83
-  - 0.93
-  - 0.99
-  verdict: hai nửa lệch 0.8 mm, sai số 1.0 mm — ĐÁNG TIN
+  - 0.15
+  - 0.18
+  - 0.52
+  verdict: 3 lượt đo khớp nhau 0.3 mm — ĐÁNG TIN TUYỆT ĐỐI
 parent_frame: rx150/ee_gripper_link
-qw: 0.7081724188269362
-qx: -0.008739001605111766
-qy: 0.011394615499835687
-qz: -0.7058934889920456
+qw: 0.7131785
+qx: -0.0067891
+qy: 0.0176632
+qz: -0.7007277
 tag_id: 1
-x: -0.062057572917192834
-y: -0.0029050823604972716
-z: 0.039186863253991434
+x: -0.0595009
+y: 0.0034502
+z: 0.0398516
+

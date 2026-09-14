@@ -1,0 +1,27 @@
+# pick_cycle — mô phỏng MỘT chu kỳ gắp-đặt trong không gian khớp.
+# Mọi khớp cùng chạy, có đoạn ngược trọng lực (lên) và thuận trọng lực (xuống),
+# đổi chiều waist ±0.7 rad — đủ để lộ khác biệt bám quỹ đạo, xác lập và effort.
+#
+# Quy ước (mọi task đều thế):
+#   start     pose bắt đầu mỗi lượt (không tính vào chỉ số, giữ start_hold giây).
+#   waypoints lần lượt được gửi làm setpoint; mỗi waypoint = 1 segment:
+#             segment bắt đầu ngay khi gửi, kéo dài 'hold' giây (gồm cả đoạn chạy
+#             do Ruckig trong node sinh ra + đoạn đứng yên để đo xác lập).
+#   Góc radian, thứ tự [waist, shoulder, elbow, wrist_angle, wrist_rotate].
+#   'hold' phải > thời gian Ruckig cần (ab_run.py ước lượng và cảnh báo nếu thiếu).
+#
+# EE thấp nhất (FK tuning_lib) = 6.6 cm ở down_L / down_R. Giá / vật cản quanh
+# robot KHÔNG được kiểm — dọn chỗ trước khi chạy.
+name: pick_cycle
+start: [0.0, -1.80, 1.55, 0.80, 0.0]     # = reference_pose của cả 2 node (không giật khi bắt đầu)
+start_hold: 2.0
+waypoints:
+  - {label: home,     q: [0.0,  0.00, 0.00, 0.00, 0.0], hold: 3.0}
+  - {label: above_L,  q: [0.7,  0.00, 0.00, 0.90, 0.0], hold: 2.5}
+  - {label: down_L,   q: [0.7,  0.35, 0.05, 0.90, 0.0], hold: 2.5}
+  - {label: up_L,     q: [0.7,  0.00, 0.00, 0.90, 0.0], hold: 2.5}
+  - {label: above_R,  q: [-0.7, 0.00, 0.00, 0.90, 0.0], hold: 3.0}
+  - {label: down_R,   q: [-0.7, 0.35, 0.05, 0.90, 0.0], hold: 2.5}
+  - {label: up_R,     q: [-0.7, 0.00, 0.00, 0.90, 0.0], hold: 2.5}
+  - {label: home2,    q: [0.0,  0.00, 0.00, 0.00, 0.0], hold: 3.0}
+  - {label: sleep,    q: [0.0, -1.80, 1.55, 0.80, 0.0], hold: 3.0}

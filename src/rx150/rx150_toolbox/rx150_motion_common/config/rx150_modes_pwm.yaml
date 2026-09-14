@@ -1,0 +1,21 @@
+# mode_configs cho MỌI bringup dùng bộ điều khiển PWM vòng kín trên host
+# (hac_node / fuzzy_node / ff_node).
+#
+# TẠI SAO KHÔNG DÙNG modes.yaml CỦA UPSTREAM: file đó cho arm lên ở
+# operating_mode = position + torque_enable = true. Nếu tay máy đã bị xê dịch
+# trong lúc torque tắt thì register Goal_Position vẫn giữ giá trị CŨ, và cấp
+# torque ở position mode làm tay máy GIẬT về đó trong khoảng thời gian trước
+# khi node điều khiển kịp chuyển sang pwm (hac_node.cpp:232).
+#
+# Ở đây driver lên THẲNG pwm với goal PWM = 0 => không sinh mô-men nào.
+# torque do chính node điều khiển bật (cli_torque_, hac_node.cpp:238) sau khi
+# nó đã nắm vòng lặp. Đã dùng cho toàn bộ thang P4/P6 ngày 2026-09-12.
+groups:
+  arm:
+    operating_mode: pwm
+    torque_enable: false
+
+singles:
+  gripper:
+    operating_mode: pwm
+    torque_enable: false

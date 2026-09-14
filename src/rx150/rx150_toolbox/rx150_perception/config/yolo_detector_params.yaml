@@ -13,7 +13,7 @@
 /**:
   ros__parameters:
     # ---- YOLO ----
-    conf_threshold: 0.4       # hạ xuống 0.3 nếu sót ống, nâng 0.5 nếu có detection ma
+    conf_threshold: 0.65      # nâng 0.55→0.65 để loại detection ma; hạ nếu sót ống thật
     imgsz: 0                  # 0 = 640 native (5.8ms). 800 = bắt ống nhỏ tốt hơn (12.9ms)
     iou: 0.7                  # hạ ~0.45 khi imgsz > 640 để gộp box trùng
     max_det: 30

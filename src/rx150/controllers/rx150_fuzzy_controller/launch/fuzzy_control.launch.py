@@ -16,6 +16,7 @@ from interbotix_xs_modules.xs_launch import declare_interbotix_xsarm_robot_descr
 
 def generate_launch_description():
     load_configs = LaunchConfiguration('load_configs')
+    mode_configs = LaunchConfiguration('mode_configs')
     robot_description = LaunchConfiguration('robot_description')
 
     # Action 1 — bring up the xsarm driver/stack for the rx150, using our motor config.
@@ -35,6 +36,7 @@ def generate_launch_description():
             'robot_model': 'rx150',
             'robot_name': 'rx150',
             'motor_configs': motor_configs,
+            'mode_configs': mode_configs,
             'load_configs': load_configs,
             'use_sim': 'false',
             'use_rviz': 'false',
@@ -58,6 +60,22 @@ def generate_launch_description():
         ])
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'mode_configs',
+            default_value=os.path.join(
+                get_package_share_directory('rx150_motion_common'),
+                'config',
+                'rx150_modes_pwm.yaml'),
+            description=(
+                'File mode config truyền xuống xsarm_control. Mặc định là '
+                'rx150_modes_pwm.yaml (arm lên THẲNG pwm, torque_enable false) chứ KHÔNG '
+                'phải modes.yaml của upstream: file upstream cho arm lên ở operating_mode '
+                'POSITION + torque_enable true, nên nếu tay máy đã bị xê dịch trong lúc '
+                'torque tắt thì register Goal_Position còn giữ giá trị CŨ và cấp torque ở '
+                'position mode làm tay máy GIẬT về đó, trong khoảng thời gian trước khi '
+                'node điều khiển kịp chuyển sang pwm.'
+            ),
+        ),
         DeclareLaunchArgument(
             'load_configs',
             default_value='false',

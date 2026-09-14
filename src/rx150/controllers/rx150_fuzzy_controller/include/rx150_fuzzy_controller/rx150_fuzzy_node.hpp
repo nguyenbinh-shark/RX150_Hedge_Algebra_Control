@@ -89,6 +89,14 @@ class FuzzyNode : public rclcpp::Node {
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_eff_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_ref_;  // debug: profile reference
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr pub_grav_; // debug: gravity comp
+  // Đo chi phí tính (A/B với HAC): gộp theo cửa sổ debug, phát ở fuzzy/timing.
+  // Giữ ĐỐI XỨNG với hac_node.hpp, nếu không số so sánh vô nghĩa.
+  rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr pub_timing_;
+  double tm_law_sum_ns_ = 0.0;
+  double tm_law_max_ns_ = 0.0;
+  double tm_cyc_sum_ns_ = 0.0;
+  double tm_cyc_max_ns_ = 0.0;
+  uint32_t tm_n_ = 0;
   rclcpp::TimerBase::SharedPtr timer_;
 
   std::vector<std::string> joint_names_;

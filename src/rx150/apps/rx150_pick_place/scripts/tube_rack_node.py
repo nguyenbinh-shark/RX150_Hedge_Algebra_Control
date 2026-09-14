@@ -323,21 +323,38 @@ class TubeRackNode(Node):
 
         Bản cũ chỉ LOẠI ống đó khỏi danh sách gắp nhưng vẫn coi slot là trống →
         ống tiếp theo được cắm chồng lên chính chỗ đã có ống.
+
+        Bản mới:
+        - Z đủ cao (gần miệng slot) → coi là đã cắm, đánh dấu slot đầy.
+        - Z thấp (trên mặt bàn) gần giá → bỏ luôn (false positive hoặc ống
+          không thể gắp do va chạm collision rack).
         """
         radius = float(self.cfg.rack_filter_xy_m)
+        z_margin = 0.03          # ống cần Z ≥ slot_z - margin mới coi là đang trên giá
         remaining = []
         for tube in tubes:
-            slot = None
-            for i, (sx, sy, _sz) in enumerate(self.slots):
+            near_slot = None      # slot gần nhất (XY)
+            on_rack = False       # True nếu Z đủ cao → đang cắm
+            for i, (sx, sy, sz) in enumerate(self.slots):
                 if math.hypot(tube['x'] - sx, tube['y'] - sy) < radius:
-                    slot = i
+                    near_slot = i
+                    on_rack = tube['z'] >= sz - z_margin
                     break
-            if slot is None:
+            if near_slot is None:
+                # Không gần slot nào → ống trên bàn, gắp bình thường
                 remaining.append(tube)
-            else:
-                self._slot_occupied[slot] = True
+            elif on_rack:
+                # Ống đã cắm trong giá → đánh dấu slot đầy
+                self._slot_occupied[near_slot] = True
                 self.get_logger().info(
-                    f'Slot {slot} đã có ống {tube["cls"]} — bỏ qua, đánh dấu đã đầy.')
+                    f'Slot {near_slot} đã có ống {tube["cls"]} — bỏ qua, đánh dấu đã đầy.')
+            else:
+                # Gần slot nhưng Z thấp → false positive hoặc ống dưới chân giá;
+                # không gắp được (va collision rack) → BỎ
+                self.get_logger().warn(
+                    f'BỎ ống {tube["cls"]} gần slot {near_slot}: '
+                    f'Z={tube["z"]:.3f} < {self.slots[near_slot][2] - z_margin:.3f} '
+                    f'(nằm dưới giá, không gắp được — có thể là detection ma).')
         return remaining
 
     # ── services ────────────────────────────────────────────────────────

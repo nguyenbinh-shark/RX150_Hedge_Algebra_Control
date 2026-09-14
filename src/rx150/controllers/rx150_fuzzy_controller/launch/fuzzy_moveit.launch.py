@@ -55,6 +55,7 @@ def launch_setup(context, *args, **kwargs):
     robot_name_launch_arg = LaunchConfiguration('robot_name')
     use_sim_launch_arg = LaunchConfiguration('use_sim')
     load_configs_launch_arg = LaunchConfiguration('load_configs')
+    mode_configs_launch_arg = LaunchConfiguration('mode_configs')
     use_moveit_rviz_launch_arg = LaunchConfiguration('use_moveit_rviz')
     rviz_config_file_launch_arg = LaunchConfiguration('rviz_config_file')
     robot_description_launch_arg = LaunchConfiguration('robot_description')
@@ -91,6 +92,7 @@ def launch_setup(context, *args, **kwargs):
             'robot_model': robot_model,
             'robot_name': robot_name,
             'motor_configs': motor_configs,
+            'mode_configs': mode_configs_launch_arg,
             'load_configs': load_configs_launch_arg,
             'use_sim': use_sim_launch_arg,
             'use_rviz': 'false',
@@ -421,6 +423,24 @@ def generate_launch_description():
             default_value='true',
             choices=('true', 'false'),
             description="launches RViz with MoveIt's RViz configuration.",
+        )
+    )
+    declared_arguments.append(
+        DeclareLaunchArgument(
+            'mode_configs',
+            default_value=os.path.join(
+                get_package_share_directory('rx150_motion_common'),
+                'config',
+                'rx150_modes_pwm.yaml'),
+            description=(
+                'File mode config truyền xuống xsarm_control. Mặc định là '
+                'rx150_modes_pwm.yaml (arm lên THẲNG pwm, torque_enable false) chứ KHÔNG '
+                'phải modes.yaml của upstream: file upstream cho arm lên ở operating_mode '
+                'POSITION + torque_enable true, nên nếu tay máy đã bị xê dịch trong lúc '
+                'torque tắt thì register Goal_Position còn giữ giá trị CŨ và cấp torque ở '
+                'position mode làm tay máy GIẬT về đó, trong khoảng thời gian trước khi '
+                'node điều khiển kịp chuyển sang pwm.'
+            ),
         )
     )
     declared_arguments.append(

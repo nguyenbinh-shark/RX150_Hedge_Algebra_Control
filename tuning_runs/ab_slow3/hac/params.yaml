@@ -1,0 +1,26 @@
+node: /rx150/hac_node
+captured: '2026-09-14T17:10:04'
+params:
+  loop_rate: 400.0
+  debug_publish_rate: 50.0
+  watchdog_timeout: 0.05
+  velocity_filter_tau: 0.006
+  enable_profile: true
+  max_velocities: [3.14, 3.14, 3.14, 3.14, 3.14]
+  max_accelerations: [5.0, 5.0, 5.0, 5.0, 5.0]
+  max_jerk: 0.0
+  sync_mode: false
+  u_max: [600.0, 600.0, 600.0, 600.0, 600.0]
+  enable_gravity_comp: true
+  Gff: [150.0, 255.0, 255.0, 500.0, 200.0]
+  gravity_sign: [1.0, 1.0, 1.0, 1.0, 1.0]
+  a: 0.15
+  b: 6.0
+  c: 1200.0
+  joint_gain_scale: [0.75, 1.25, 1.25, 0.9, 1.0]
+  error_limit: [0.25, 0.333, 0.333, 0.2, 0.5]
+  error_dot_limit: [3.14, 3.14, 3.14, 3.14, 3.14]
+  gravity_model_source: pinocchio
+  friction_coulomb: [0.0, 0.0, 0.0, 0.0, 0.0]
+  friction_viscous: [0.0, 0.0, 0.0, 0.0, 0.0]
+  friction_eps: 0.05
